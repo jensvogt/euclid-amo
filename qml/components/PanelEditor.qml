@@ -4,11 +4,11 @@ import QtQuick.Controls.Material
 
 // What a panel shows, and how.
 //
-// The metric name is a combo box that can also be typed into, and that is deliberate: the list is
-// assembled by reading what EMO has stored recently (see EmoClient::fetchCatalog), so a metric
-// that exists but has been quiet is missing from it. Refusing to chart what the picker cannot
-// offer would make the application useless for exactly the series somebody is investigating - the
-// one that stopped.
+// The metric name is a field that can be typed into as well as picked from MetricPicker, and that
+// is deliberate: the catalog is assembled by reading what EMO has stored rather than asked for
+// (see EmoClient::fetchCatalog), so a metric quiet for long enough can be missing from it.
+// Refusing to chart what the picker cannot offer would make the application useless for exactly
+// the series somebody is investigating - the one that stopped.
 Dialog {
     id: root
     modal: true
@@ -22,6 +22,9 @@ Dialog {
     // The panel being edited, or an empty map for a new one.
     property var panel: ({})
     property bool isNew: false
+    // Which dimension of the panel's label map the one filter row is showing, so that saving
+    // replaces that one rather than the whole map. Empty when the panel had no filter.
+    property string loadedFilterKey: ""
 
     // Not "accepted": Dialog has a signal of that name already, and a second one is an
     // invalid override rather than an addition.
@@ -29,7 +32,7 @@ Dialog {
 
     readonly property var currentMetric: {
         for (const metric of root.catalog) {
-            if (metric.name === metricField.editText) return metric
+            if (metric.name === metricField.text) return metric
         }
         return null
     }
@@ -38,14 +41,25 @@ Dialog {
         root.panel = existing ? JSON.parse(JSON.stringify(existing)) : ({})
         root.isNew = creating === true
         titleField.text = root.panel.title || ""
-        metricField.editText = root.panel.metric || ""
+        metricField.text = root.panel.metric || ""
         typeBox.currentIndex = Math.max(0, typeBox.model.indexOf(root.panel.type || "line"))
         unitBox.currentIndex = Math.max(0, unitBox.model.indexOf(root.panel.unit || ""))
         reduceBox.currentIndex = Math.max(0, reduceBox.model.indexOf(root.panel.reduce || "latest"))
         decimalsBox.value = root.panel.decimals || 0
         groupByField.editText = root.panel.groupBy || ""
-        filterKeyField.editText = ""
-        filterValueField.editText = ""
+
+        // The filter the panel already carries, put back into the form. It used to be cleared here
+        // whatever the panel held, which made the filter look like it had not been saved - and then
+        // made that true, because the next save wrote this empty form back over it.
+        //
+        // One pair, out of a map that can hold several: the form has one row, so the first pair is
+        // the one it shows and the key it loaded is remembered for the save below.
+        const labels = root.panel.labels || ({})
+        const filterKeys = Object.keys(labels)
+        root.loadedFilterKey = filterKeys.length > 0 ? filterKeys[0] : ""
+        filterKeyField.editText = root.loadedFilterKey
+        filterValueField.editText = root.loadedFilterKey.length > 0 ? labels[root.loadedFilterKey] : ""
+
         root.open()
     }
 
@@ -54,6 +68,14 @@ Dialog {
         color: Theme.panel
         border.color: Theme.border
         border.width: 1
+    }
+
+    // Parented to the window's overlay rather than to this dialog, so it is centred on and sized
+    // against the window: the picker is deliberately wider than the editor that opens it.
+    MetricPicker {
+        id: metricPicker
+        parent: Overlay.overlay
+        onMetricChosen: (name) => metricField.text = name
     }
 
     contentItem: Column {
@@ -65,6 +87,45 @@ Dialog {
             color: Theme.text
             font.pixelSize: 16
             font.bold: true
+        }
+
+        // Outside the Grid and across the whole dialog, because it is the one field whose value is
+        // long: a metric name is a prefix and several words, and at half the width the names that
+        // differ only at the end read identically. Everything else here fits in half.
+        Column {
+            width: parent.width
+            spacing: 3
+
+            Text { text: "Metric"; color: Theme.textFaint; font.pixelSize: 10 }
+
+            Row {
+                width: parent.width
+                spacing: 8
+
+                TextField {
+                    id: metricField
+                    width: parent.width - browseButton.width - 8
+                    // No placeholder, unlike the other fields: Material floats one up onto the
+                    // border as soon as there is text, and this field almost always has some -
+                    // which would print a second label directly under the one above.
+                    Material.theme: Material.Dark
+                    Material.accent: Theme.accent
+                    // Typed as well as picked, deliberately - see the note at the top of the file.
+                    // The picker is the comfortable way in, not the only one.
+                    ToolTip.visible: hovered && metricField.text.length > 0
+                    ToolTip.text: metricField.text
+                    ToolTip.delay: 600
+                }
+
+                Button {
+                    id: browseButton
+                    text: "Browse…"
+                    anchors.verticalCenter: parent.verticalCenter
+                    Material.theme: Material.Dark
+                    Material.accent: Theme.accent
+                    onClicked: metricPicker.openFor(metricField.text, root.catalog)
+                }
+            }
         }
 
         Grid {
@@ -99,27 +160,9 @@ Dialog {
                 }
             }
 
-            // Half the width, like every other cell, because a Grid sizes a column to its widest
-            // item: one full-width cell in the left column pushes the right one - visualisation,
-            // split, decimals, the filter value - off the edge of the dialog entirely.
-            Column {
-                width: (parent.width - 14) / 2
-                spacing: 3
-                Text { text: "Metric"; color: Theme.textFaint; font.pixelSize: 10 }
-                ComboBox {
-                    id: metricField
-                    width: parent.width
-                    editable: true
-                    model: {
-                        const names = []
-                        for (const metric of root.catalog) names.push(metric.name)
-                        return names
-                    }
-                    Material.theme: Material.Dark
-                    Material.accent: Theme.accent
-                }
-            }
-
+            // Every cell here is half the dialog, and has to be: a Grid sizes a column to its
+            // widest item, so one full-width cell in the left column would push the right one -
+            // visualisation, split, the filter value - off the edge of the dialog entirely.
             Column {
                 width: (parent.width - 14) / 2
                 spacing: 3
@@ -162,20 +205,6 @@ Dialog {
             Column {
                 width: (parent.width - 14) / 2
                 spacing: 3
-                Text { text: "Decimals"; color: Theme.textFaint; font.pixelSize: 10 }
-                SpinBox {
-                    id: decimalsBox
-                    width: parent.width
-                    from: 0
-                    to: 4
-                    Material.theme: Material.Dark
-                    Material.accent: Theme.accent
-                }
-            }
-
-            Column {
-                width: (parent.width - 14) / 2
-                spacing: 3
                 Text { text: "Filter dimension"; color: Theme.textFaint; font.pixelSize: 10 }
                 ComboBox {
                     id: filterKeyField
@@ -206,6 +235,22 @@ Dialog {
                         const values = root.currentMetric.labelValues[filterKeyField.editText]
                         return values ? [""].concat(values) : [""]
                     }
+                    Material.theme: Material.Dark
+                    Material.accent: Theme.accent
+                }
+            }
+
+            // Moved down from beside Unit so that the filter and its value stay on one row: with
+            // the metric lifted out of the Grid the cells no longer pair the way they did.
+            Column {
+                width: (parent.width - 14) / 2
+                spacing: 3
+                Text { text: "Decimals"; color: Theme.textFaint; font.pixelSize: 10 }
+                SpinBox {
+                    id: decimalsBox
+                    width: parent.width
+                    from: 0
+                    to: 4
                     Material.theme: Material.Dark
                     Material.accent: Theme.accent
                 }
@@ -268,22 +313,33 @@ Dialog {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.isNew ? "Add panel" : "Save panel"
                 highlighted: true
-                enabled: metricField.editText.length > 0
+                enabled: metricField.text.length > 0
                 Material.theme: Material.Dark
                 Material.accent: Theme.accent
                 onClicked: {
                     const edited = root.panel
-                    edited.title = titleField.text.length > 0 ? titleField.text : metricField.editText
+                    edited.title = titleField.text.length > 0 ? titleField.text : metricField.text
                     edited.type = typeBox.currentText
-                    edited.metric = metricField.editText
+                    edited.metric = metricField.text
                     edited.groupBy = groupByField.editText
                     edited.unit = unitBox.currentText
                     edited.decimals = decimalsBox.value
                     // Written whatever the type is, so that a panel switched to a line and back
                     // finds the figure it was showing still chosen.
                     edited.reduce = reduceBox.currentText
-                    edited.labels = filterKeyField.editText.length > 0 && filterValueField.editText.length > 0
-                            ? ({[filterKeyField.editText]: filterValueField.editText}) : ({})
+                    // Built from what the panel already had rather than from the form alone: this
+                    // dialog edits one dimension, and a dashboard hand-written to filter on two
+                    // should not lose the second one by being opened here. The row's own dimension
+                    // is dropped first, so clearing the form clears the filter.
+                    const labels = ({})
+                    const existingLabels = root.panel.labels || ({})
+                    for (const key of Object.keys(existingLabels)) {
+                        if (key !== root.loadedFilterKey) labels[key] = existingLabels[key]
+                    }
+                    if (filterKeyField.editText.length > 0 && filterValueField.editText.length > 0) {
+                        labels[filterKeyField.editText] = filterValueField.editText
+                    }
+                    edited.labels = labels
                     root.panelSaved(edited)
                     root.close()
                 }

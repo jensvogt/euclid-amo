@@ -110,56 +110,61 @@ void EmoClient::fetchSeries(const QString &panelId, const QString &metricName, c
          });
 }
 
-void EmoClient::fetchCatalog(const QString &resolution, const int limit) {
+void EmoClient::mergeCatalog(const QJsonArray &items) {
 
-    QJsonObject body;
-    body["limit"] = limit;
-    body["resolution"] = resolution;
+    for (const auto &value: items) {
+        const QJsonObject item = value.toObject();
+        const auto name = item.value("name").toString();
+        if (name.isEmpty()) continue;
 
-    m_base->post("emo", "list", body, true,
-         [this](const QJsonObject &response) {
-             QList<QString> order;
-             QMap<QString, QMap<QString, QSet<QString>>> seen;
+        // Touched even when it carries no labels, so a metric with no dimensions at all is still
+        // a metric the picker offers.
+        auto &keys = m_catalog[name];
+        const QVariantMap labels = labelsOf(item);
+        for (auto it = labels.constBegin(); it != labels.constEnd(); ++it) {
+            keys[it.key()].insert(it.value().toString());
+        }
+    }
 
-             for (const QJsonArray items = response.value("items").toArray(); const auto &value: items) {
-                 const QJsonObject item = value.toObject();
-                 const auto name = item.value("name").toString();
-                 if (name.isEmpty()) continue;
-                 if (!seen.contains(name)) order.append(name);
+    QVariantList metrics;
+    for (auto entryIt = m_catalog.constBegin(); entryIt != m_catalog.constEnd(); ++entryIt) {
+        QVariantMap entry;
+        entry["name"] = entryIt.key();
 
-                 const QVariantMap labels = labelsOf(item);
-                 auto &keys = seen[name];
-                 for (auto it = labels.constBegin(); it != labels.constEnd(); ++it) {
-                     keys[it.key()].insert(it.value().toString());
-                 }
-             }
+        QStringList labelKeys;
+        QVariantMap labelValues;
+        for (auto it = entryIt.value().constBegin(); it != entryIt.value().constEnd(); ++it) {
+            labelKeys.append(it.key());
+            QStringList values(it.value().constBegin(), it.value().constEnd());
+            values.sort();
+            labelValues[it.key()] = values;
+        }
 
-             std::sort(order.begin(), order.end());
+        entry["labelKeys"] = labelKeys;
+        entry["labelValues"] = labelValues;
+        metrics.append(entry);
+    }
 
-             QVariantList metrics;
-             for (const auto &name: order) {
-                 QVariantMap entry;
-                 entry["name"] = name;
+    emit catalogLoaded(metrics);
+}
 
-                 QStringList labelKeys;
-                 QVariantMap labelValues;
-                 const auto &keys = seen.value(name);
-                 for (auto it = keys.constBegin(); it != keys.constEnd(); ++it) {
-                     labelKeys.append(it.key());
-                     QStringList values(it.value().constBegin(), it.value().constEnd());
-                     values.sort();
-                     labelValues[it.key()] = values;
-                 }
-                 labelKeys.sort();
+void EmoClient::fetchCatalog(const int limit) {
 
-                 entry["labelKeys"] = labelKeys;
-                 entry["labelValues"] = labelValues;
-                 metrics.append(entry);
-             }
+    m_catalog.clear();
 
-             emit catalogLoaded(metrics);
-         },
-         [this](const QString &message) {
-             emit catalogFailed(message);
-         });
+    // DAY first: it is the small, complete one, so the picker is usable from the first answer and
+    // the RAW read only ever adds to it.
+    for (const auto &resolution: {QStringLiteral("DAY"), QStringLiteral("RAW")}) {
+        QJsonObject body;
+        body["limit"] = limit;
+        body["resolution"] = resolution;
+
+        m_base->post("emo", "list", body, true,
+             [this](const QJsonObject &response) {
+                 mergeCatalog(response.value("items").toArray());
+             },
+             [this](const QString &message) {
+                 emit catalogFailed(message);
+             });
+    }
 }

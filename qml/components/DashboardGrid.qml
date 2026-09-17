@@ -141,7 +141,9 @@ Item {
                         }
                         return out
                     }
-                    valueSuffix: cell.modelData.unit === "%" ? "%" : ""
+                    // The panel's unit, whatever it is. It used to be "%" or nothing, which left
+                    // every other unit - bytes above all - drawn as a bare number.
+                    unit: cell.modelData.unit || ""
                     decimals: cell.modelData.decimals || 0
                     timeFormat: root.editing ? "hh:mm" : "hh:mm"
                 }

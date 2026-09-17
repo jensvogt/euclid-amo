@@ -29,6 +29,24 @@ Item {
         {label: "30d", seconds: 2592000, resolution: "DAY"}
     ]
 
+    // How often the wall re-asks, as a table for the same reason the ranges are one: two places
+    // offer this now - here and the dashboard dialog - and a second copy of the seconds behind
+    // "1m" is a copy that will eventually disagree.
+    readonly property var refreshOptions: [
+        {label: "off", seconds: 0},
+        {label: "10s", seconds: 10},
+        {label: "30s", seconds: 30},
+        {label: "1m", seconds: 60},
+        {label: "5m", seconds: 300}
+    ]
+
+    function indexOfRefresh(seconds) {
+        for (let i = 0; i < root.refreshOptions.length; ++i) {
+            if (root.refreshOptions[i].seconds === seconds) return i
+        }
+        return 0
+    }
+
     readonly property var currentRange: {
         for (const entry of root.ranges) {
             if (entry.label === root.range) return entry
@@ -43,6 +61,7 @@ Item {
     signal addPanelRequested()
     signal dashboardSelected(string name)
     signal newDashboardRequested()
+    signal editDashboardRequested()
     signal settingsRequested()
 
     implicitHeight: 52
@@ -98,6 +117,23 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.newDashboardRequested()
+            }
+        }
+
+        // Beside the dashboard it acts on rather than among the wall's own controls on the right:
+        // this edits which dashboard this is, not what the wall is currently showing.
+        Text {
+            text: "Edit"
+            color: editDashboardArea.containsMouse ? Theme.accent : Theme.textMuted
+            font.pixelSize: 12
+            anchors.verticalCenter: parent.verticalCenter
+            MouseArea {
+                id: editDashboardArea
+                anchors.fill: parent
+                anchors.margins: -6
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.editDashboardRequested()
             }
         }
     }
@@ -159,16 +195,20 @@ Item {
             width: 96
             height: 30
             anchors.verticalCenter: parent.verticalCenter
-            model: ["off", "10s", "30s", "1m", "5m"]
+            model: root.refreshOptions.map(option => option.label)
             Material.theme: Material.Dark
             Material.accent: Theme.accent
-            onActivated: {
-                const seconds = [0, 10, 30, 60, 300]
-                root.refreshSelected(seconds[currentIndex])
-            }
-            Component.onCompleted: {
-                const seconds = [0, 10, 30, 60, 300]
-                refreshBox.currentIndex = Math.max(0, seconds.indexOf(root.refreshSeconds))
+            onActivated: root.refreshSelected(root.refreshOptions[currentIndex].seconds)
+            // Assigned rather than bound, like the dashboard box above: the index is this control's
+            // own state once it exists, and the dashboard dialog can change the interval underneath
+            // it - which the Connections below is for.
+            Component.onCompleted: refreshBox.currentIndex = root.indexOfRefresh(root.refreshSeconds)
+
+            Connections {
+                target: root
+                function onRefreshSecondsChanged() {
+                    refreshBox.currentIndex = root.indexOfRefresh(root.refreshSeconds)
+                }
             }
         }
 

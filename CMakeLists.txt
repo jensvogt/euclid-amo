@@ -74,6 +74,8 @@ qt_add_qml_module(euclid-amo
         qml/components/DashboardGrid.qml
         qml/components/PanelFrame.qml
         qml/components/PanelEditor.qml
+        qml/components/MetricPicker.qml
+        qml/components/DashboardDialog.qml
         qml/components/TimeRangeBar.qml
         qml/components/SettingsDialog.qml
         qml/components/ToggleSwitch.qml

@@ -14,7 +14,11 @@ Item {
 
     // One entry per line: {name: string, color: color, points: [{"timestamp": ISO string, "value": number}]}
     property var series: []
-    property string valueSuffix: ""
+    // The panel's unit, in MetricFormat's vocabulary - "bytes", "ms", "%" and the rest. Every other
+    // panel type has always formatted through MetricFormat; this one used to take a bare suffix
+    // instead, so a chart of bytes drew "268435456" up its axis where a stat of the same metric
+    // read "256.0 MB".
+    property string unit: ""
     property int decimals: 0
     // Qt.formatDateTime() format for the axis ends and the crosshair readout. The default suits
     // points minutes apart; a chart spanning days or months should widen it (e.g. "dd MMM"),
@@ -53,15 +57,19 @@ Item {
     }
 
     function formatValue(v) {
-        return (decimals > 0 ? v.toFixed(decimals) : Math.round(v)) + valueSuffix
+        return MetricFormat.format(v, root.unit, root.decimals)
     }
 
     // Tick labels need their own precision: with a step below 1 the chart's own `decimals` (0 for
     // counts) would print several gridlines as the same number.
+    //
+    // Only for the units that count in plain numbers, though. A scaled unit picks its own places
+    // from the size of what it is printing - "256.0 MB", "1.2 s" - and asking for three decimals of
+    // a byte count would undo that.
     function formatTick(v) {
         const step = root.ticks.length > 1 ? Math.abs(root.ticks[1] - root.ticks[0]) : 1
         const digits = step >= 1 ? root.decimals : Math.min(3, Math.ceil(-Math.log(step) / Math.LN10))
-        return (digits > 0 ? v.toFixed(digits) : Math.round(v)) + root.valueSuffix
+        return MetricFormat.format(v, root.unit, digits)
     }
 
     function formatTime(iso) {

@@ -1,6 +1,9 @@
 #pragma once
 
+#include <QJsonArray>
+#include <QMap>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
@@ -32,15 +35,24 @@ public:
                                  const QString &fromIso, const QString &toIso,
                                  const QString &resolution, int limit = 500);
 
-    // What there is to chart: every metric name currently stored, with the label keys seen on it
-    // and the values seen under each.
+    // What there is to chart: every metric name stored, with the label keys seen on it and the
+    // values seen under each.
     //
-    // Assembled here from one unfiltered read rather than asked for, because EMO has no action
-    // that enumerates its series - "list" filters, it does not describe. That makes this an
-    // approximation bounded by `limit`: a metric not written within the most recent `limit` rows of
-    // the tier is not in the answer. Good enough for a picker, which is all it feeds, and the
-    // editor lets a name be typed as well as picked.
-    Q_INVOKABLE void fetchCatalog(const QString &resolution = QStringLiteral("RAW"), int limit = 2000);
+    // Assembled here from unfiltered reads rather than asked for, because EMO has no action that
+    // enumerates its series - "list" filters, it does not describe. Since a read is bounded by
+    // `limit` and answers newest first, what any one of them sees is "whatever was written most
+    // recently", which is why this reads two tiers and merges them:
+    //
+    //   DAY  - one row per series per day, so a tier small enough that `limit` covers all of it.
+    //          This is what makes a metric that has stopped - an import job's counters between
+    //          runs, a module that was restarted - appear at all.
+    //   RAW  - five-minute buckets, where a metric first written minutes ago already is and the
+    //          day rollup has not yet reached.
+    //
+    // Either tier alone leaves a hole; the union has none worth caring about. catalogLoaded() is
+    // emitted after each answer with everything known so far, so a failure of one still leaves the
+    // picker populated from the other.
+    Q_INVOKABLE void fetchCatalog(int limit = 2000);
 
 signals:
     // `series` is [{name, points: [{timestamp, value, maxValue}]}], oldest first so a chart can
@@ -55,5 +67,14 @@ signals:
     void catalogFailed(const QString &message);
 
 private:
+    // One tier's answer folded into m_catalog, then the whole of it emitted. Merging rather than
+    // replacing is the point: the two reads arrive separately and neither is complete alone.
+    void mergeCatalog(const QJsonArray &items);
+
+    // {metric name: {label key: values seen}}, across every tier read so far. Sorted containers
+    // throughout, so the picker's order is the collation order and not the order rows happened to
+    // arrive in.
+    QMap<QString, QMap<QString, QSet<QString>>> m_catalog;
+
     EuclidBaseClient *m_base;
 };

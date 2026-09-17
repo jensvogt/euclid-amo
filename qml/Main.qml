@@ -95,6 +95,49 @@ ApplicationWindow {
         window.updateDashboard({panels: panels})
     }
 
+    // The dashboard's own settings, as the dashboard dialog hands them back.
+    //
+    // A rename is a new file and then the old one gone, in that order and never the other way: the
+    // name is the file name, so losing the old file before the new one is written would lose the
+    // dashboard itself. If the write fails there is nothing to clean up and the old one is still
+    // the dashboard.
+    function applyDashboardSettings(name, range, refreshSeconds) {
+        const previousName = window.dashboard.name
+        const dashboard = Object.assign({}, window.dashboard,
+                                        {name: name, range: range, refreshSeconds: refreshSeconds})
+
+        if (!dashboardStore.save(name, dashboard)) {
+            window.showNotice(dashboardStore.lastError())
+            return
+        }
+        if (name !== previousName && !dashboardStore.remove(previousName)) {
+            // The dashboard is safe either way - it is the new file now - so this is a stray file
+            // to mention rather than a failure to undo.
+            window.showNotice(dashboardStore.lastError())
+        }
+
+        window.dashboard = dashboard
+        window.refresh()
+    }
+
+    function removeDashboard(name) {
+        if (!dashboardStore.remove(name)) {
+            window.showNotice(dashboardStore.lastError())
+            return
+        }
+
+        window.panelData = ({})
+        // Whatever is left, or the starter wall again - the alternative is a window showing a
+        // dashboard that is no longer on disk, which the next edit would write back.
+        if (dashboardStore.names.length > 0) {
+            window.openDashboard(dashboardStore.names[0])
+        } else {
+            window.dashboard = dashboardStore.starterDashboard()
+            window.persist()
+            window.refresh()
+        }
+    }
+
     function panelById(panelId) {
         for (const panel of window.panels) {
             if (panel.id === panelId) return panel
@@ -161,7 +204,7 @@ ApplicationWindow {
             window.persist()
         }
 
-        emoClient.fetchCatalog("RAW", 2000)
+        emoClient.fetchCatalog(2000)
         window.refresh()
     }
 
@@ -240,6 +283,7 @@ ApplicationWindow {
         onAddPanelRequested: panelEditor.openFor({type: "line", unit: "", decimals: 0, w: 8, h: 6}, true)
         onDashboardSelected: (name) => window.openDashboard(name)
         onNewDashboardRequested: newDashboardDialog.open()
+        onEditDashboardRequested: dashboardDialog.openFor(window.dashboard)
         onSettingsRequested: settingsDialog.open()
     }
 
@@ -356,6 +400,21 @@ ApplicationWindow {
                 window.fetchPanel(panel)
             }
         }
+    }
+
+    DashboardDialog {
+        id: dashboardDialog
+        dashboardName: window.dashboard.name || ""
+        range: window.dashboard.range || "1h"
+        refreshSeconds: window.dashboard.refreshSeconds || 0
+        panelCount: window.panels.length
+        existingNames: dashboardStore.names
+        // The two tables live on the bar that has always owned them.
+        ranges: topBar.ranges
+        refreshOptions: topBar.refreshOptions
+
+        onDashboardSaved: (name, range, refreshSeconds) => window.applyDashboardSettings(name, range, refreshSeconds)
+        onDashboardRemoved: (name) => window.removeDashboard(name)
     }
 
     SettingsDialog {
