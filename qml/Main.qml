@@ -214,12 +214,27 @@ ApplicationWindow {
     onLoggedInChanged: {
         if (!window.loggedIn) return
 
+        const known = dashboardStore.names
+
+        // A name that matches nothing is said out loud rather than ignored. --dashboard exists so
+        // a wall can be restarted onto the right dashboard unattended, and a wall that quietly
+        // opened a different one would be a wall showing the wrong thing to whoever walks past.
+        if (cliDashboard.length > 0 && known.indexOf(cliDashboard) < 0) {
+            window.showNotice("No dashboard called \"" + cliDashboard + "\""
+                              + (known.length > 0 ? " - opening " + known[0] + " instead." : "."))
+        }
+
+        const preferred = (cliDashboard.length > 0 && known.indexOf(cliDashboard) >= 0) ? cliDashboard
+                          : (known.length > 0 ? known[0] : "")
+
         // A first run has no dashboards at all, and an empty grid with an "add panel" button is a
         // poor first impression of a monitoring application. The starter wall is built from the
         // metrics EMO records about itself, which are the ones certain to be there.
-        const preferred = cliDashboard.length > 0 ? cliDashboard
-                          : (dashboardStore.names.length > 0 ? dashboardStore.names[0] : "")
-        if (preferred.length > 0 && dashboardStore.names.indexOf(preferred) >= 0) {
+        //
+        // Only when there are none, though: it is called "Overview" and saving it is how a first
+        // run gets one, so reaching here with dashboards on disk - which a mistyped --dashboard
+        // used to do - would write it straight over the Overview somebody already had.
+        if (preferred.length > 0) {
             window.openDashboard(preferred)
         } else {
             window.dashboard = dashboardStore.starterDashboard()
