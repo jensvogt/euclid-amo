@@ -1,0 +1,194 @@
+#pragma once
+
+#include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QObject>
+#include <QTimer>
+#include <QString>
+#include <QStringList>
+#include <QVariantMap>
+#include <functional>
+
+// Shared HTTP/session foundation: owns the network manager and the current
+// login session (token/account/region/namespace), and exposes the EAM
+// (account/auth) calls. Module-specific clients (EqsClient, EsmClient, ...)
+// hold a pointer to a single shared instance of this and issue requests
+// through it, so every client rides the same authenticated session.
+class EuclidBaseClient : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    Q_PROPERTY(bool isAdmin READ isAdmin NOTIFY isAdminChanged)
+    Q_PROPERTY(QString userId READ userId NOTIFY userIdChanged)
+    Q_PROPERTY(QString accountId READ accountId NOTIFY accountIdChanged)
+    Q_PROPERTY(QString region READ region NOTIFY regionChanged)
+    Q_PROPERTY(QString baseUrl READ baseUrl WRITE setBaseUrl NOTIFY baseUrlChanged)
+
+public:
+    explicit EuclidBaseClient(QObject *parent = nullptr);
+
+    [[nodiscard]]
+    bool busy() const { return m_busy; }
+
+    // Whether the login said this user is an administrator. Only a hint for the UI - it decides
+    // what is worth offering, not what is allowed; the server checks every request for itself.
+    [[nodiscard]]
+    bool isAdmin() const { return m_isAdmin; }
+
+    // The euclid-mgr gateway every request is posted to, e.g. "https://localhost:5566/". Owned by
+    // AppSettings (which persists it and composes it from host/port/scheme) and pushed in from
+    // main.cpp, so this class stays free of any settings dependency.
+    [[nodiscard]]
+    QString baseUrl() const { return m_baseUrl; }
+
+    // Pointing at a different gateway invalidates the session: a token minted by one euclid-mgr
+    // means nothing to another, and the account/region/namespace it resolved belong to that
+    // backend too. So this drops all of it and reports the session as ended, rather than letting
+    // the next request fail in a way that looks like a server error.
+    Q_INVOKABLE void setBaseUrl(const QString &baseUrl);
+
+    // How authorized requests prove who they are: "bearer" sends the JWT the password login
+    // returned, "sigv4" and "rfc9421" sign every request with an EAM access key instead. Pushed
+    // in from main.cpp out of AppSettings, same as the base URL. A signature mode with no key
+    // configured falls back to the bearer token rather than sending an unauthenticated request.
+    Q_INVOKABLE void setAuthMode(const QString &authMode);
+    Q_INVOKABLE void setAccessKey(const QString &accessKeyId, const QString &secretAccessKey);
+
+    // Who this session logs in as, exactly as it was typed and exactly as every request's
+    // x-euclid-user-id header carries it - which is what EAD stores as the author of a command,
+    // so it is also what narrows the audit trail to "mine". Empty until login() succeeds.
+    [[nodiscard]]
+    QString userId() const { return m_userId; }
+
+    // Empty until login() succeeds.
+    [[nodiscard]]
+    QString accountId() const { return m_accountId; }
+
+    // Empty until login() succeeds.
+    [[nodiscard]]
+    QString region() const { return m_region; }
+
+    Q_INVOKABLE void login(const QString &userId, const QString &password);
+
+    // Ends the session this process is holding: the token, the renewal it had scheduled, the
+    // namespace, and the access key it was signing with. Everything that reads "somebody is signed
+    // in" follows from sessionCleared(), which this emits.
+    //
+    // Local, because there is nothing to tell the server: a euclid session is a JWT that carries
+    // its own expiry and no module keeps a list of the live ones, so a token is forgotten here
+    // rather than revoked there. It stays valid for whatever is left of its hour - which matters
+    // only to somebody who already has a copy of it.
+    Q_INVOKABLE void logout();
+    Q_INVOKABLE void fetchNamespaces();
+    Q_INVOKABLE void setNamespace(const QString &namespaceName);
+
+    // POSTs a euclid gateway request (header-routed via x-euclid-target/
+    // x-euclid-action). Public so module client classes can issue requests
+    // through this shared session instead of duplicating auth/session state.
+    // timeoutMs overrides the default transfer timeout, for the one request that is meant to sit
+    // there: EES's "receive-events" waits on the server for as long as it is told to, so a client
+    // that long-polls has to be willing to wait longer than a normal call ever should.
+    // Returns the reply, for the caller that has to be able to abort a long one; ignoring it is
+    // the normal case - the callbacks own the outcome either way. The reply returned is the first
+    // attempt's: a "list" that lost its connection is sent again (see sendJson), and the second
+    // attempt has a reply of its own that nobody asked for a handle to.
+    QNetworkReply *post(const QString &target, const QString &action, const QJsonObject &body, bool authorized,
+                        const std::function<void(const QJsonObject &)> &onSuccess,
+                        const std::function<void(const QString &)> &onError,
+                        int timeoutMs = 0);
+
+    // Like post(), but sends a raw binary body (e.g. file contents) with extra raw headers, instead
+    // of a JSON body. Always authorized - every raw-upload action needs a session. Used for actions
+    // like ESM's "put-object" that read the request body as bytes rather than JSON.
+    QNetworkReply *postRaw(const QString &target, const QString &action, const QVariantMap &extraHeaders, const QByteArray &body,
+                           const std::function<void(const QJsonObject &)> &onSuccess,
+                           const std::function<void(const QString &)> &onError,
+                           int timeoutMs = 0);
+
+    // The mirror of postRaw() for the reply rather than the request: the *response* body is handed
+    // over as bytes instead of being parsed as JSON. For actions like ESM's "get-object", which
+    // answers with the object itself ("application/octet-stream") and only uses JSON to say why it
+    // would not - so failures are still read the same way postRaw() reads them. The request carries
+    // no body; everything these actions need is in the headers.
+    QNetworkReply *postForBytes(const QString &target, const QString &action, const QVariantMap &extraHeaders,
+                                const std::function<void(const QByteArray &)> &onSuccess,
+                                const std::function<void(const QString &)> &onError,
+                                int timeoutMs = 0);
+
+signals:
+    void busyChanged();
+    void isAdminChanged();
+    void userIdChanged();
+    void accountIdChanged();
+    void regionChanged();
+    void baseUrlChanged();
+    // The session was dropped without the user signing out - currently only because the gateway
+    // address changed under it (see setBaseUrl()).
+    void sessionCleared();
+    void loginSucceeded();
+    // The session was renewed in the background. Carries the seconds it is now good for, which is
+    // what a status line would show; nothing has to act on it.
+    void sessionRefreshed(qint64 secondsRemaining);
+    // Renewal failed and the session is on its way out - the next request will be refused. Its own
+    // signal rather than loginFailed, which belongs to somebody typing a password.
+    void sessionRefreshFailed(const QString &message);
+    void loginFailed(const QString &message);
+    // The access key the gateway handed back on login, which is the one this session signs with
+    // from here on. Emitted so whoever owns the stored credentials can keep them in step: the key
+    // belongs to the installation just signed into, and the stored one may belong to another.
+    void accessKeyIssued(const QString &accessKeyId, const QString &secretAccessKey);
+    void namespacesLoaded(const QStringList &namespaces);
+    void namespacesFailed(const QString &message);
+
+private:
+    // Drops everything that identifies this session. Shared by logout() and by pointing the client
+    // at another gateway, which throws the session away for a different reason but in the same
+    // way; "forgetAccessKey" is the one thing they disagree about.
+    void clearSession(bool forgetAccessKey);
+
+    void setBusy(bool busy);
+
+    // What post() actually does, plus which attempt this is - 1 for the first. Its own function
+    // rather than a loop because a retry has to build and sign a *new* request: the signature
+    // covers a timestamp, and the one on the failed attempt is as old as the wait that failed.
+    QNetworkReply *sendJson(const QString &target, const QString &action, const QJsonObject &body, bool authorized,
+                            const std::function<void(const QJsonObject &)> &onSuccess,
+                            const std::function<void(const QString &)> &onError,
+                            int timeoutMs, int attempt);
+
+    // Applies whichever scheme m_authMode names to a request that is about to be sent. `target`
+    // and `action` are already on the request; the body is passed separately because the
+    // signature covers it and QNetworkRequest cannot be asked for it afterwards.
+    void authorize(QNetworkRequest &request, const QByteArray &body) const;
+
+    // Renews the session before the token on it expires, rather than after. A token is good for an
+    // hour and the server has no way to accept an expired one - refresh-session authenticates like
+    // every other action - so a client that waits to be refused has already lost the session and can
+    // only ask for the password again.
+    //
+    // Scheduled from the token's own "exp" claim rather than from a hardcoded hour: the lifetime is
+    // the server's to choose, and reading it back is what keeps the two from drifting apart.
+    void scheduleSessionRefresh();
+    void refreshSession();
+    // Seconds until the token expires, from its own payload, or -1 when there is no usable one. The
+    // claim is read, not verified - this decides when to ask, and the server decides whether to
+    // answer.
+    static qint64 secondsUntilExpiry(const QString &token);
+
+    QTimer m_sessionRefreshTimer;
+    // Set while a refresh is in flight, so a tick that lands on a slow one does not stack a second.
+    bool m_refreshingSession = false;
+
+    QNetworkAccessManager m_networkManager;
+    QString m_baseUrl;
+    QString m_authMode{QStringLiteral("bearer")};
+    QString m_accessKeyId;
+    QString m_secretAccessKey;
+    QString m_token;
+    QString m_userId;
+    QString m_accountId;
+    QString m_region;
+    QString m_namespace;
+    bool m_busy = false;
+    bool m_isAdmin = false;
+};

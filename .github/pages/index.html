@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="eng">
+<head>
+    <meta charset="utf-8">
+    <title>Euclid Application Monitoring Installers</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 40px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+        }
+
+        th {
+            background: #eee;
+        }
+
+        code {
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Euclid Application Monitoring Binaries</h1>
+<p>Automatically generated list of installer builds.</p>
+
+<h2>Debian/Ubuntu (APT repository)</h2>
+<pre><code>curl -fsSL https://jensvogt.github.io/euclid-amo/apt/euclid-amo.gpg.asc | sudo gpg --dearmor -o /usr/share/keyrings/euclid-amo.gpg
+echo "deb [signed-by=/usr/share/keyrings/euclid-amo.gpg] https://jensvogt.github.io/euclid-amo/apt stable main" | sudo tee /etc/apt/sources.list.d/euclid-amo.list
+sudo apt update
+sudo apt install euclid-amo</code></pre>
+
+<table>
+    <thead>
+    <tr>
+        <th>File</th>
+        <th>Size (MB)</th>
+        <th>SHA-256</th>
+    </tr>
+    </thead>
+    <tbody id="files"></tbody>
+</table>
+
+<script>
+    async function fetchData() {
+        const filesElement = document.getElementById("files");
+
+        const manifest = await fetch("files.json").then(r => r.json());
+        const files = manifest.downloads;
+
+        for (const item of files) {
+            const sizeMB = (item.size / 1024 / 1024).toFixed(2);
+
+            const row = document.createElement("tr");
+            row.innerHTML = `
+            <td><a href="${item.file}">${item.file}</a></td>
+            <td>${sizeMB}</td>
+            <td><code>${item.sha256}</code></td>
+        `;
+            filesElement.appendChild(row);
+        }
+    }
+
+    fetchData();
+</script>
+
+</body>
+</html>

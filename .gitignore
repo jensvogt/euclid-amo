@@ -1,0 +1,19 @@
+cmake-build-*/
+build/
+out/
+*.user
+.idea/
+.qtc_clangd/
+CMakeLists.txt.user*
+
+# OS
+.DS_Store
+
+# Generated from dist/win32/installer/**/*.xml.in by CMakeLists.txt at configure time
+dist/win32/installer/config/config.xml
+dist/win32/installer/packages/de.jensvogt.euclidamo/meta/package.xml
+
+# Windows installer build output (binarycreator/repogen)
+dist/win32/installer/packages/de.jensvogt.euclidamo/data/
+dist/win32/installer/*.exe
+dist/win32/installer/repository/

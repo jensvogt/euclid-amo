@@ -1,0 +1,520 @@
+#include "EuclidBaseClient.h"
+#include <algorithm>
+#include <QDateTime>
+#include "RequestSigner.h"
+
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QSslConfiguration>
+#include <QSslSocket>
+#include <QUrl>
+
+namespace {
+// Only the starting value: main.cpp overwrites it with the persisted AppSettings::baseUrl() before
+// the first request, and the login dialog can point it somewhere else at any time.
+constexpr auto kDefaultBaseUrl = "https://localhost:5566/";
+// The gateway (and/or intermediate infra) can silently close an idle keep-alive connection;
+// QNetworkAccessManager doesn't always notice before trying to reuse it, which otherwise leaves
+// the request hanging forever with no error and no timeout. Bound every request so a stale
+// connection surfaces as a normal, retryable error instead.
+//
+// euclid's own gateway is one of those: GatewayServer's session arms a 30-second read timeout for
+// the next request on a keep-alive connection, and a dashboard refreshing on a 30-second timer
+// reuses the socket at the moment the gateway is closing it. See retryable() below.
+constexpr int kTransferTimeoutMs = 15000;
+
+// A reply whose request never reached the server: the connection was gone (or going) before any of
+// the response arrived. Not the same as a failure - the server declined nothing here, it was never
+// asked - which is why these are worth one more attempt on a fresh connection, and why a reply
+// carrying a reason from the server is never one of them.
+//
+// Nothing a client does can prevent this: however recently a pooled connection was checked, the
+// peer may close it between the check and the write. Every HTTP client that keeps connections
+// alive therefore retries this case rather than trying to predict it.
+// TimeoutError is what setTransferTimeout() raises ("Operation timed out"), RemoteHostClosedError
+// what a peer that hangs up mid-request raises ("Connection closed"); between them they are the two
+// ways a closing keep-alive connection ends a request here. OperationCanceledError is deliberately
+// not one of them - that is abort(), and a caller that abandoned a request does not want it sent
+// again.
+bool retryable(const QNetworkReply::NetworkError error) {
+    return error == QNetworkReply::TimeoutError
+           || error == QNetworkReply::RemoteHostClosedError;
+}
+
+// Reads only. A request that never arrived is safe to send twice, but "never arrived" is a
+// deduction from silence - the server may have done the work and lost the answer on the way back.
+// For a list that costs a second query; for anything that writes it would be a second write this
+// client invented, so those still surface the error and leave the decision to whoever asked.
+bool safeToRepeat(const QString &action) {
+    return action.startsWith(QLatin1String("list"));
+}
+
+// The first attempt and one more. A stale connection is a one-shot condition - the retry opens a
+// new one - so a second failure is the server, and repeating past that only delays saying so.
+constexpr int kMaxAttempts = 2;
+
+// A reply that never received a body - a connection the gateway had already closed, a TLS
+// handshake that failed, a request the transfer timeout aborted - finishes *closed*. Calling
+// readAll() on it is harmless but makes Qt print "QIODevice::read (QNetworkReplyHttpImpl): device
+// not open" for each one, which with several pages polling on a timer fills the log with warnings
+// that say nothing the error handler below doesn't already report.
+QJsonObject replyBody(QNetworkReply *reply) {
+    if (!reply->isOpen())
+        return {};
+    return QJsonDocument::fromJson(reply->readAll()).object();
+}
+}
+
+EuclidBaseClient::EuclidBaseClient(QObject *parent) : QObject(parent), m_baseUrl(QString::fromLatin1(kDefaultBaseUrl)) {
+    m_sessionRefreshTimer.setSingleShot(true);
+    connect(&m_sessionRefreshTimer, &QTimer::timeout, this, &EuclidBaseClient::refreshSession);
+}
+
+// The "exp" claim, read out of the JWT's payload without verifying anything. A JWT is three
+// base64url segments; the middle one is the claims, and the only claim needed here is when this
+// stops being accepted. Verifying it would need the signing secret, which is the server's alone -
+// and there is nothing to protect against: a client lying to itself about its own expiry only
+// renews at the wrong moment.
+qint64 EuclidBaseClient::secondsUntilExpiry(const QString &token) {
+    const auto segments = token.split(QLatin1Char('.'));
+    if (segments.size() < 2)
+        return -1;
+
+    const auto payload = QByteArray::fromBase64(segments.at(1).toUtf8(), QByteArray::Base64UrlEncoding);
+    const auto claims = QJsonDocument::fromJson(payload).object();
+    const auto expiry = claims.value(QStringLiteral("exp"));
+    if (!expiry.isDouble())
+        return -1;
+
+    return static_cast<qint64>(expiry.toDouble()) - QDateTime::currentSecsSinceEpoch();
+}
+
+void EuclidBaseClient::scheduleSessionRefresh() {
+
+    m_sessionRefreshTimer.stop();
+    if (m_token.isEmpty())
+        return;
+
+    // Nothing to renew while requests are signed: the token is not sent, so its expiry decides
+    // nothing. Asking anyway would be an hourly request that buys nothing - and an hourly failure
+    // reported to the user on any server without refresh-session, for a session that is working
+    // perfectly well. The mirror of authorize()'s own condition, deliberately: whether the token
+    // matters is exactly whether it would be sent.
+    if (m_authMode == QLatin1String("rfc9421") && !m_accessKeyId.isEmpty() && !m_secretAccessKey.isEmpty())
+        return;
+
+    const auto remaining = secondsUntilExpiry(m_token);
+    if (remaining < 0) {
+        // No usable expiry: either not a JWT or a claim this cannot read. Renewing on a guess would
+        // be worse than not renewing - the session still works until it does not, which is where
+        // this started.
+        return;
+    }
+
+    // A minute of headroom, or half the lifetime for a session short enough that a minute is most
+    // of it. Early rather than late on purpose: refresh-session authenticates like every other
+    // action, so a token that has already expired cannot be used to ask for its successor.
+    const qint64 lead = std::min<qint64>(60, remaining / 2);
+    const qint64 delay = std::max<qint64>(1, remaining - lead);
+
+    m_sessionRefreshTimer.start(static_cast<int>(std::min<qint64>(delay, 24 * 60 * 60) * 1000));
+}
+
+void EuclidBaseClient::refreshSession() {
+
+    if (m_token.isEmpty() || m_refreshingSession)
+        return;
+    m_refreshingSession = true;
+
+    // Not marked busy: this is the application keeping itself alive rather than anything the user
+    // asked for, and a spinner appearing once an hour for no reason somebody can see is worse than
+    // no spinner.
+    post("eam", "refresh-session", QJsonObject{}, true,
+         [this](const QJsonObject &response) {
+             m_refreshingSession = false;
+
+             const auto token = response.value("token").toString();
+             if (token.isEmpty()) {
+                 emit sessionRefreshFailed(tr("The gateway renewed the session without giving a token."));
+                 return;
+             }
+             m_token = token;
+
+             // The key comes back with it, and may have been reissued since - adopted for the same
+             // reason login adopts it.
+             if (const auto accessKeyId = response.value("accessKeyId").toString(),
+                 secretAccessKey = response.value("secretAccessKey").toString();
+                 !accessKeyId.isEmpty() && !secretAccessKey.isEmpty()) {
+                 setAccessKey(accessKeyId, secretAccessKey);
+                 emit accessKeyIssued(accessKeyId, secretAccessKey);
+             }
+
+             scheduleSessionRefresh();
+             emit sessionRefreshed(secondsUntilExpiry(m_token));
+         },
+         [this](const QString &message) {
+             m_refreshingSession = false;
+             // Tried again once, sooner: a renewal that failed because the gateway was briefly
+             // unreachable should not cost the whole session, and there is still headroom left
+             // before the token actually expires.
+             const auto remaining = secondsUntilExpiry(m_token);
+             if (remaining > 10) {
+                 m_sessionRefreshTimer.start(static_cast<int>(std::min<qint64>(remaining - 5, 30) * 1000));
+                 return;
+             }
+             emit sessionRefreshFailed(message);
+         });
+}
+
+void EuclidBaseClient::setBaseUrl(const QString &baseUrl) {
+    if (baseUrl.isEmpty() || baseUrl == m_baseUrl)
+        return;
+    m_baseUrl = baseUrl;
+    emit baseUrlChanged();
+
+    // The session this was renewing is gone; renewing it against another gateway would be asking a
+    // backend about a token it never minted. The key is kept, though - it is the operator's
+    // setting, and AppSettings would push the same one straight back in anyway.
+    clearSession(false);
+}
+
+void EuclidBaseClient::logout() {
+    // And here the key goes too. Under RFC 9421 the server resolves the caller from the key and
+    // never reads the token at all, so a sign-out that dropped only the token would leave every
+    // request after it exactly as authorized as the ones before.
+    clearSession(true);
+}
+
+void EuclidBaseClient::clearSession(const bool forgetAccessKey) {
+
+    const bool hadSession = !m_token.isEmpty() || (forgetAccessKey && !m_accessKeyId.isEmpty());
+    m_token.clear();
+    m_sessionRefreshTimer.stop();
+    m_namespace.clear();
+    if (forgetAccessKey) {
+        // In this process only. What is on disk belongs to the settings page, and wiping a
+        // credential the user typed there is not what "sign out" asks for - the next login adopts
+        // whichever key the gateway hands back regardless.
+        m_accessKeyId.clear();
+        m_secretAccessKey.clear();
+    }
+    if (m_isAdmin) {
+        m_isAdmin = false;
+        emit isAdminChanged();
+    }
+    if (!m_userId.isEmpty()) {
+        m_userId.clear();
+        emit userIdChanged();
+    }
+    if (!m_accountId.isEmpty()) {
+        m_accountId.clear();
+        emit accountIdChanged();
+    }
+    if (!m_region.isEmpty()) {
+        m_region.clear();
+        emit regionChanged();
+    }
+    if (hadSession)
+        emit sessionCleared();
+}
+
+void EuclidBaseClient::setAuthMode(const QString &authMode) {
+    m_authMode = authMode;
+}
+
+void EuclidBaseClient::setAccessKey(const QString &accessKeyId, const QString &secretAccessKey) {
+    m_accessKeyId = accessKeyId;
+    m_secretAccessKey = secretAccessKey;
+}
+
+// Everything an authorized request needs to prove itself. The x-euclid-* headers are set here
+// rather than at the call sites because both signature schemes cover them: a header added after
+// signing would not be covered, and one changed afterwards would break the signature.
+void EuclidBaseClient::authorize(QNetworkRequest &request, const QByteArray &body) const {
+
+    const QUrl url(m_baseUrl);
+    // Same spelling Qt puts in the Host header, which is what the server signs against: the port
+    // is only part of the authority when it isn't the scheme's default.
+    const int defaultPort = url.scheme() == QLatin1String("https") ? 443 : 80;
+    const int port = url.port(defaultPort);
+    const QString authority = port == defaultPort ? url.host() : url.host() + ":" + QString::number(port);
+
+    // Signed either way, so they go on the request before the signature is computed. account-id
+    // and user-id are informational to the server - it resolves the caller from the key - but
+    // RFC 9421 refuses to build a signature base over a component that is missing or empty.
+    request.setRawHeader("x-euclid-region", m_region.toUtf8());
+    request.setRawHeader("x-euclid-account-id", m_accountId.isEmpty() ? QByteArrayLiteral("-") : m_accountId.toUtf8());
+    request.setRawHeader("x-euclid-user-id", m_userId.isEmpty() ? QByteArrayLiteral("-") : m_userId.toUtf8());
+    if (!m_namespace.isEmpty())
+        request.setRawHeader("x-euclid-namespace", m_namespace.toUtf8());
+
+    const bool signing = m_authMode == QLatin1String("rfc9421")
+                         && !m_accessKeyId.isEmpty() && !m_secretAccessKey.isEmpty();
+    if (!signing) {
+        request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
+        return;
+    }
+
+    RequestSigner::Request signable;
+    signable.method = QStringLiteral("POST");
+    signable.path = url.path().isEmpty() ? QStringLiteral("/") : url.path();
+    signable.authority = authority;
+    signable.body = body;
+    for (const QByteArray &name: request.rawHeaderList())
+        signable.headers.insert(QString::fromLatin1(name).toLower(), QString::fromUtf8(request.rawHeader(name)));
+    signable.headers.insert(QStringLiteral("host"), authority);
+
+    RequestSigner::Credentials credentials;
+    credentials.accessKeyId = m_accessKeyId;
+    credentials.secretAccessKey = m_secretAccessKey;
+    credentials.region = m_region;
+    // Carried for the credential scope; the server re-derives the key from whatever that scope
+    // names, so the routed module is the honest choice.
+    credentials.service = QString::fromUtf8(request.rawHeader("x-euclid-target"));
+
+    // RFC 9421 is the only scheme the RUI signs with. SigV4 proved the same thing with the same
+    // key and the server still accepts it, but there is no reason to send a proprietary
+    // canonicalisation where an open standard says it as well.
+    const auto signed_ = RequestSigner::signRfc9421(signable, credentials);
+    for (auto it = signed_.constBegin(); it != signed_.constEnd(); ++it)
+        request.setRawHeader(it.key().toUtf8(), it.value().toUtf8());
+}
+
+void EuclidBaseClient::setBusy(const bool busy) {
+    if (m_busy == busy)
+        return;
+    m_busy = busy;
+    emit busyChanged();
+}
+
+QNetworkReply *EuclidBaseClient::post(const QString &target, const QString &action, const QJsonObject &body, const bool authorized,
+                             const std::function<void(const QJsonObject &)> &onSuccess,
+                             const std::function<void(const QString &)> &onError,
+                             const int timeoutMs) {
+    return sendJson(target, action, body, authorized, onSuccess, onError, timeoutMs, 1);
+}
+
+QNetworkReply *EuclidBaseClient::sendJson(const QString &target, const QString &action, const QJsonObject &body, const bool authorized,
+                             const std::function<void(const QJsonObject &)> &onSuccess,
+                             const std::function<void(const QString &)> &onError,
+                             const int timeoutMs, const int attempt) {
+    QNetworkRequest request{QUrl(m_baseUrl)};
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    request.setRawHeader("x-euclid-target", target.toUtf8());
+    request.setRawHeader("x-euclid-action", action.toUtf8());
+
+    // Listing something is the UI describing the system, not asking it to do work, and every page
+    // here re-lists on a timer for as long as it is open. Counted as load, a browser left on the
+    // queues page would hold EQS at whatever size it had reached and stop it ever scaling down -
+    // the monitoring preventing the thing it exists to watch.
+    //
+    // Everything else the RUI sends is a person doing something: creating a queue, publishing a
+    // message, stopping an application. Those are real, and are counted. Deliberately not signed
+    // (see RequestSigner's covered components) - it is a hint about intent, not a credential.
+    if (action.startsWith(QLatin1String("list"))) {
+        request.setRawHeader("x-euclid-internal", "true");
+    }
+    const QByteArray payload = QJsonDocument(body).toJson(QJsonDocument::Compact);
+    if (authorized) {
+        authorize(request, payload);
+    }
+
+    // The local gateway runs with a self-signed dev certificate.
+    QSslConfiguration sslConfig = request.sslConfiguration();
+    sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
+    request.setSslConfiguration(sslConfig);
+    request.setTransferTimeout(timeoutMs > 0 ? timeoutMs : kTransferTimeoutMs);
+
+    QNetworkReply *reply = m_networkManager.post(request, payload);
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, target, action, body, authorized, onSuccess, onError, timeoutMs, attempt]() {
+        reply->deleteLater();
+        const QJsonObject obj = replyBody(reply);
+
+        if (reply->error() != QNetworkReply::NoError) {
+            // euclid puts the reason in "error" (Core::HttpActionServer::ErrorResponse builds
+            // {"error": ...}); "message" is tried first only because some responses have carried
+            // it. Without the "error" fallback every server-side reason - "Invalid credentials",
+            // "Namespace does not exist" - was replaced by Qt's generic transport string.
+            const QString reason = obj.value("message").toString(obj.value("error").toString());
+
+            // A read that got no answer at all, on a connection that may simply have been closed
+            // under it: send it again rather than report a failure the server never chose. Built
+            // from scratch by the call below, not resent - the signature covers a timestamp, and
+            // replaying one is a request that ages while it waits.
+            //
+            // Not for a caller who set its own timeout: that request is meant to sit there, and a
+            // timeout is the answer it was waiting for rather than a connection that went away.
+            if (attempt < kMaxAttempts && timeoutMs <= 0 && reason.isEmpty()
+                && safeToRepeat(action) && retryable(reply->error())) {
+                sendJson(target, action, body, authorized, onSuccess, onError, timeoutMs, attempt + 1);
+                return;
+            }
+
+            onError(reason.isEmpty() ? reply->errorString() : reason);
+            return;
+        }
+        onSuccess(obj);
+    });
+    return reply;
+}
+
+QNetworkReply *EuclidBaseClient::postRaw(const QString &target, const QString &action, const QVariantMap &extraHeaders, const QByteArray &body,
+                                const std::function<void(const QJsonObject &)> &onSuccess,
+                                const std::function<void(const QString &)> &onError,
+                                const int timeoutMs) {
+    QNetworkRequest request{QUrl(m_baseUrl)};
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/octet-stream");
+    request.setRawHeader("x-euclid-target", target.toUtf8());
+    request.setRawHeader("x-euclid-action", action.toUtf8());
+    // Extra headers first: they are part of the request the signature covers.
+    for (auto it = extraHeaders.constBegin(); it != extraHeaders.constEnd(); ++it)
+        request.setRawHeader(it.key().toUtf8(), it.value().toString().toUtf8());
+    authorize(request, body);
+
+    // The local gateway runs with a self-signed dev certificate.
+    QSslConfiguration sslConfig = request.sslConfiguration();
+    sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
+    request.setSslConfiguration(sslConfig);
+    request.setTransferTimeout(timeoutMs > 0 ? timeoutMs : kTransferTimeoutMs);
+
+    QNetworkReply *reply = m_networkManager.post(request, body);
+    connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
+        reply->deleteLater();
+        const QJsonObject obj = replyBody(reply);
+
+        if (reply->error() != QNetworkReply::NoError) {
+            // euclid puts the reason in "error" (Core::HttpActionServer::ErrorResponse builds
+            // {"error": ...}); "message" is tried first only because some responses have carried
+            // it. Without the "error" fallback every server-side reason - "Invalid credentials",
+            // "Namespace does not exist" - was replaced by Qt's generic transport string.
+            const QString reason = obj.value("message").toString(obj.value("error").toString());
+            onError(reason.isEmpty() ? reply->errorString() : reason);
+            return;
+        }
+        onSuccess(obj);
+    });
+    return reply;
+}
+
+QNetworkReply *EuclidBaseClient::postForBytes(const QString &target, const QString &action, const QVariantMap &extraHeaders,
+                                const std::function<void(const QByteArray &)> &onSuccess,
+                                const std::function<void(const QString &)> &onError,
+                                const int timeoutMs) {
+    QNetworkRequest request{QUrl(m_baseUrl)};
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/octet-stream");
+    request.setRawHeader("x-euclid-target", target.toUtf8());
+    request.setRawHeader("x-euclid-action", action.toUtf8());
+    for (auto it = extraHeaders.constBegin(); it != extraHeaders.constEnd(); ++it)
+        request.setRawHeader(it.key().toUtf8(), it.value().toString().toUtf8());
+    authorize(request, {});
+
+    // The local gateway runs with a self-signed dev certificate.
+    QSslConfiguration sslConfig = request.sslConfiguration();
+    sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
+    request.setSslConfiguration(sslConfig);
+    request.setTransferTimeout(timeoutMs > 0 ? timeoutMs : kTransferTimeoutMs);
+
+    QNetworkReply *reply = m_networkManager.post(request, QByteArray());
+    connect(reply, &QNetworkReply::finished, this, [reply, onSuccess, onError]() {
+        reply->deleteLater();
+        // Read once: the body is either the payload or the JSON explaining its absence, and a
+        // reply cannot be read twice.
+        const QByteArray body = reply->isOpen() ? reply->readAll() : QByteArray();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            const QJsonObject obj = QJsonDocument::fromJson(body).object();
+            const QString reason = obj.value("message").toString(obj.value("error").toString());
+            onError(reason.isEmpty() ? reply->errorString() : reason);
+            return;
+        }
+        onSuccess(body);
+    });
+    return reply;
+}
+
+void EuclidBaseClient::login(const QString &userId, const QString &password) {
+    setBusy(true);
+
+    QJsonObject body;
+    if (userId.contains('@'))
+        body["email"] = userId;
+    else
+        body["userId"] = userId;
+    body["password"] = password;
+
+    post("eam", "login", body, false,
+         [this, userId](const QJsonObject &response) {
+             m_userId = userId;
+             const QJsonObject metadata = response.value("metadata").toObject();
+             m_token = response.value("token").toString();
+             m_accountId = metadata.value("accountId").toString();
+             m_region = metadata.value("region").toString();
+             m_isAdmin = response.value("isAdmin").toBool();
+
+             // The access key the server just handed back for this user, adopted rather than
+             // ignored. Every authorized request is signed with a key; login is the one call that
+             // is not - so a key belonging to some other installation costs nothing until the
+             // moment login succeeds, and then fails every request that follows it. Pointing the
+             // RUI at a second gateway is exactly that case: the key in the settings was typed for
+             // the first one, and the second has never heard of it.
+             //
+             // Stable across logins, so this is not key churn: EAM reuses the user's existing
+             // active key and mints one only when there is none (see EamServer's issueSession).
+             if (const auto accessKeyId = response.value("accessKeyId").toString(),
+                 secretAccessKey = response.value("secretAccessKey").toString();
+                 !accessKeyId.isEmpty() && !secretAccessKey.isEmpty()) {
+                 setAccessKey(accessKeyId, secretAccessKey);
+                 // Said rather than stored here: what is on disk is AppSettings' business, and it
+                 // is the settings page's value that would otherwise go on showing a key this
+                 // session has stopped using.
+                 emit accessKeyIssued(accessKeyId, secretAccessKey);
+             }
+
+             // Renewal starts with the session rather than when something first fails: a token is
+             // good for an hour, and the point is to replace it while it still works.
+             scheduleSessionRefresh();
+
+             emit isAdminChanged();
+             emit userIdChanged();
+             emit accountIdChanged();
+             emit regionChanged();
+             emit loginSucceeded();
+             fetchNamespaces();
+         },
+         [this](const QString &message) {
+             setBusy(false);
+             emit loginFailed(message);
+         });
+}
+
+void EuclidBaseClient::fetchNamespaces() {
+    setBusy(true);
+
+    QJsonObject body;
+    body["accountId"] = m_accountId;
+    body["prefix"] = "";
+    body["pageSize"] = 100;
+    body["pageIndex"] = 0;
+    body["sortColumn"] = "name";
+
+    post("eam", "list-namespaces", body, true,
+         [this](const QJsonObject &response) {
+             setBusy(false);
+             QStringList namespaces;
+             const QJsonArray array = response.value("namespaces").toArray();
+             for (const QJsonValue &value : array)
+                 namespaces << value.toObject().value("name").toString();
+             emit namespacesLoaded(namespaces);
+         },
+         [this](const QString &message) {
+             setBusy(false);
+             emit namespacesFailed(message);
+         });
+}
+
+void EuclidBaseClient::setNamespace(const QString &namespaceName) {
+    m_namespace = namespaceName;
+}
