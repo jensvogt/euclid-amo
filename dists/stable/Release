@@ -1,0 +1,23 @@
+Architectures: amd64
+Codename: stable
+Components: main
+Date: Thu, 17 Sep 2026 12:58:28 +0000
+Label: Euclid AMO
+Origin: Euclid AMO
+Suite: stable
+MD5Sum:
+ f3cbc6e0aa20b60aa4699dbc5bb3483a              144 Release
+ f899906be8df57066d626d0969880fd8              628 main/binary-amd64/Packages
+ 2dde6959ceb4b9636d24a80472e10a0d              457 main/binary-amd64/Packages.gz
+SHA1:
+ 04b971cf660cef1e76a784b868bbffcf7d96a61e              144 Release
+ f51df607b4f660179634487db3b503a73d90b1cf              628 main/binary-amd64/Packages
+ c0c1e9108f9b9e4dcbe85f72f6b9fcf2614361aa              457 main/binary-amd64/Packages.gz
+SHA256:
+ 1c87ad59dbaeae124363eaa85e35cf5f55d1b8d8b256240d0306b5c799849d4d              144 Release
+ 87d12f388345bc39d7664d3105c4bae1758de7e44a8b3f7c7836f547b62b438b              628 main/binary-amd64/Packages
+ 45f867908fabde3fef2440bcddcd9ab670e05bfc04108ca9c6648dbc434551a2              457 main/binary-amd64/Packages.gz
+SHA512:
+ 18a712990b504bb052aec6db9fe1e67154af12305a14263d01ff6dda1ab435cb187220827c112d3222223ec46755e57e253ae5de90a5b23296f693a5d6c3c039              144 Release
+ 1ccd42b02e552d578432970a8979240051fe82796fe055e37e0e817c018d7fe94380b6fc4ae306d260077a00343b5224091aa80b2f4bb4cbd3692c9d373a1598              628 main/binary-amd64/Packages
+ ee6e1cb06422063e743ebbbe6b9ecf049b09af0fadc63d1cf94972492aaf5c83179fc1641fe0cc8be99083148ba2fe9f9be4e15cffde31ddcf264e24b7f92483              457 main/binary-amd64/Packages.gz
