@@ -15,8 +15,21 @@ import "components"
 // slow or failing panel then reports its own error rather than emptying the dashboard.
 ApplicationWindow {
     id: window
-    width: 1600
-    height: 980
+
+    // Opened in the middle of the screen it lands on, at the size below unless that screen is
+    // smaller - a window wider than the display is one whose right-hand panels cannot be reached.
+    //
+    // Screen.width and Screen.virtualX are this screen's own geometry and its origin in the
+    // virtual desktop, which is what "the current display" means here. Screen.desktopAvailableWidth
+    // is the whole virtual desktop rather than one screen, and centring in that would put the
+    // window over the seam between two monitors.
+    readonly property int preferredWidth: 1600
+    readonly property int preferredHeight: 980
+
+    width: Screen.width > 0 ? Math.min(window.preferredWidth, Screen.width) : window.preferredWidth
+    height: Screen.height > 0 ? Math.min(window.preferredHeight, Screen.height) : window.preferredHeight
+    x: Screen.virtualX + (Screen.width - window.width) / 2
+    y: Screen.virtualY + (Screen.height - window.height) / 2
     visible: true
     title: "Euclid AMO " + appVersion + (window.dashboard.name ? " · " + window.dashboard.name : "")
     color: Theme.background
@@ -183,6 +196,15 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        // The geometry above is where to open, not a rule to keep enforcing. Assigning each of the
+        // four back to itself drops its binding, so resizing the window does not re-centre it and
+        // dragging it onto another monitor does not make it jump to the middle of that one.
+        const opened = Qt.rect(window.x, window.y, window.width, window.height)
+        window.x = opened.x
+        window.y = opened.y
+        window.width = opened.width
+        window.height = opened.height
+
         if (cliUser.length > 0 && cliPassword.length > 0)
             loginDialog.autoLogin(cliUser, cliPassword, cliNamespace)
         else
