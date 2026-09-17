@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/jensvogt/euclid-amo/compare/1.0.2...v1.0.3) (2026-09-17)
+
+
+### Bug Fixes
+
+* application split ([f91e918](https://github.com/jensvogt/euclid-amo/commit/f91e918d04ff91e9f50d3bad68ee3bee62cb4b50))
+
 ## [1.0.2](https://github.com/jensvogt/euclid-amo/compare/1.0.1...v1.0.2) (2026-09-17)
 
 
