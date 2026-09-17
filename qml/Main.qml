@@ -151,6 +151,20 @@ ApplicationWindow {
         }
     }
 
+    // Opening the editor asks what there is to chart again, rather than trusting the answer from
+    // sign-in.
+    //
+    // A metric's dimensions are whatever has been pushed with it, and that changes underneath a
+    // running wall: a service that starts tagging its metrics with application-name at three
+    // o'clock adds a dimension that a catalog fetched at login has never heard of, and the editor
+    // then cannot offer the one thing somebody opened it to set. The answer lands in
+    // window.catalog, which the dialog's pickers are bound to, so one that arrives while the
+    // dialog is already open fills them in where they stand.
+    function openPanelEditor(panel, creating) {
+        emoClient.fetchCatalog(2000)
+        panelEditor.openFor(panel, creating)
+    }
+
     function panelById(panelId) {
         for (const panel of window.panels) {
             if (panel.id === panelId) return panel
@@ -251,10 +265,17 @@ ApplicationWindow {
         function onSeriesLoaded(panelId, series, latest, minimum, maximum, total) {
             window.setPanelState(panelId, {
                 series: series, latest: latest, minimum: minimum, maximum: maximum, total: total,
-                loading: false, error: ""
+                // Cleared here and set by onSeriesAmbiguous below, which arrives after this one:
+                // a split fixed in the editor should take the warning off the panel on the next
+                // refresh rather than leave it there for the life of the window.
+                loading: false, error: "", warning: ""
             })
             window.outstanding = Math.max(0, window.outstanding - 1)
             window.lastUpdated = Qt.formatDateTime(new Date(), "hh:mm:ss")
+        }
+
+        function onSeriesAmbiguous(panelId, message) {
+            window.setPanelState(panelId, {warning: message})
         }
 
         function onSeriesFailed(panelId, message) {
@@ -317,7 +338,7 @@ ApplicationWindow {
         onRefreshSelected: (seconds) => window.updateDashboard({refreshSeconds: seconds})
         onRefreshRequested: window.refresh()
         onEditingToggled: window.editing = !window.editing
-        onAddPanelRequested: panelEditor.openFor({type: "line", unit: "", decimals: 0, w: 8, h: 6}, true)
+        onAddPanelRequested: window.openPanelEditor({type: "line", unit: "", decimals: 0, w: 8, h: 6}, true)
         onDashboardSelected: (name) => window.openDashboard(name)
         onNewDashboardRequested: newDashboardDialog.open()
         onEditDashboardRequested: dashboardDialog.openFor(window.dashboard)
@@ -361,7 +382,7 @@ ApplicationWindow {
                 panel.h = h
                 window.replacePanel(panelId, panel)
             }
-            onPanelEditRequested: (panelId) => panelEditor.openFor(window.panelById(panelId), false)
+            onPanelEditRequested: (panelId) => window.openPanelEditor(window.panelById(panelId), false)
             onPanelRemoveRequested: (panelId) => window.removePanel(panelId)
             onPanelDuplicateRequested: (panelId) => {
                 const original = window.panelById(panelId)

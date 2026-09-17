@@ -279,6 +279,25 @@ Dialog {
             }
         }
 
+        // Why the two dimension pickers are empty, when they are. Without this the answer looks
+        // like a broken dialog rather than what it is: EMO stores a label map per row and declares
+        // nothing, so a dimension exists here only once something has pushed the metric carrying
+        // it - and a metric that stopped being written before its application started tagging has
+        // none at all.
+        Text {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            color: Theme.warn
+            font.pixelSize: 10
+            visible: metricField.text.length > 0
+                     && (!root.currentMetric || root.currentMetric.labelKeys.length === 0)
+            text: root.currentMetric
+                  ? "No dimensions have been recorded for this metric, so there is nothing to split "
+                    + "or filter by. One appears here as soon as the metric is pushed carrying it."
+                  : "This metric is not in the catalog, so its dimensions are unknown. A name can "
+                    + "still be typed into either field above."
+        }
+
         Text {
             width: parent.width
             wrapMode: Text.WordWrap

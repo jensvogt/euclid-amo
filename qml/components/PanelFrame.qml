@@ -14,6 +14,9 @@ Rectangle {
     property string subtitle: ""
     property bool loading: false
     property string error: ""
+    // Something worth knowing about a chart that still drew. Unlike "error" this does not replace
+    // the content - the line is there and readable, it just is not the line it appears to be.
+    property string warning: ""
     property bool editing: false
     // While a panel is being dragged or resized it is lifted out of the wall: a border, a shadow of
     // sorts, and it stops responding to hover so the pointer belongs to the gesture.
@@ -145,6 +148,55 @@ Rectangle {
         // Hidden rather than covered, so a chart is not left half visible behind a message about
         // why it could not be drawn.
         visible: root.error.length === 0
+    }
+
+    // Along the bottom edge, over the chart rather than beside it: a panel is as small as its owner
+    // made it, and taking a strip of height away from the drawing to explain the drawing would
+    // leave some panels with neither.
+    Rectangle {
+        id: warningStrip
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 1
+        height: 22
+        radius: 6
+        color: Qt.rgba(Theme.warn.r, Theme.warn.g, Theme.warn.b, 0.12)
+        visible: root.warning.length > 0 && root.error.length === 0
+
+        Row {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+
+            Text {
+                text: "⚠"
+                color: Theme.warn
+                font.pixelSize: 11
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                width: parent.width - 20
+                text: root.warning
+                color: Theme.textMuted
+                font.pixelSize: 10
+                elide: Text.ElideRight
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+
+        ToolTip.visible: warningArea.containsMouse
+        ToolTip.text: root.warning
+        ToolTip.delay: 300
+
+        MouseArea {
+            id: warningArea
+            anchors.fill: parent
+            hoverEnabled: true
+        }
     }
 
     Column {

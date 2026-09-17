@@ -36,12 +36,20 @@ int main(int argc, char *argv[]) {
 
     QQuickStyle::setStyle("Material");
 
-    QQmlApplicationEngine engine;
-
+    // Declared before the engine, and that order is the whole point: locals are destroyed in
+    // reverse, so the engine goes first and takes every QML object with it while the four objects
+    // those objects are bound to are still alive.
+    //
+    // The other way round - which is the obvious way to write it - each of these dies while the
+    // QML that reads it is still standing, and every binding on them re-evaluates against a null
+    // context property on the way out: "TypeError: Cannot read property 'names' of null" and one
+    // like it for every binding, on every clean exit.
     AppSettings appSettings;
     EuclidBaseClient euclidClient;
     EmoClient emoClient(&euclidClient);
     DashboardStore dashboardStore;
+
+    QQmlApplicationEngine engine;
 
     // The gateway address lives in the settings, which persist it, and is pushed into the client -
     // neither knows about the other's storage.

@@ -106,6 +106,7 @@ Item {
                 subtitle: cell.modelData.metric + (cell.modelData.groupBy ? " · by " + cell.modelData.groupBy : "")
                 loading: cell.panelData.loading === true
                 error: cell.panelData.error || ""
+                warning: cell.panelData.warning || ""
                 editing: root.editing
                 active: cell.dragging || cell.resizing
                 border.color: cell.rejected ? Theme.bad
