@@ -19,6 +19,30 @@ Dialog {
 
     // The catalog, as EmoClient answers it: [{name, labelKeys, labelValues}].
     property var catalog: []
+
+    // The catalog the dimension pickers are actually built from, which is only ever replaced inside
+    // adoptCatalog() below. An editable ComboBox clears its edit text when the *contents* of its
+    // model change underneath it, and these models are derived from the catalog - which is refetched
+    // every time this dialog opens, so an answer lands a moment after it is on screen. Left to
+    // itself that wipes the split and the filter a panel was opened carrying, and the next Save
+    // writes the blank fields back over them.
+    property var catalogSnapshot: []
+
+    function adoptCatalog() {
+        // Captured, swapped, and put back: the swap is the only moment the models change, so it is
+        // the only place the values have to be held on to. Reading them from the fields rather than
+        // from stored properties keeps whatever was typed since the dialog opened.
+        const split = groupByField.editText
+        const filterKey = filterKeyField.editText
+        const filterValue = filterValueField.editText
+
+        root.catalogSnapshot = root.catalog
+
+        groupByField.editText = split
+        filterKeyField.editText = filterKey
+        filterValueField.editText = filterValue
+    }
+
     // The panel being edited, or an empty map for a new one.
     property var panel: ({})
     property bool isNew: false
@@ -31,13 +55,15 @@ Dialog {
     signal panelSaved(var panel)
 
     readonly property var currentMetric: {
-        for (const metric of root.catalog) {
+        for (const metric of root.catalogSnapshot) {
             if (metric.name === metricField.text) return metric
         }
         return null
     }
 
     function openFor(existing, creating) {
+        // Before any field is filled in, so the models are settled by the time they are.
+        root.catalogSnapshot = root.catalog
         root.panel = existing ? JSON.parse(JSON.stringify(existing)) : ({})
         root.isNew = creating === true
         titleField.text = root.panel.title || ""
@@ -61,6 +87,13 @@ Dialog {
         filterValueField.editText = root.loadedFilterKey.length > 0 ? labels[root.loadedFilterKey] : ""
 
         root.open()
+    }
+
+    // A refetch answers a moment after this dialog is on screen, and twice - once per tier EMO is
+    // asked for. Every one of those goes through adoptCatalog().
+    Connections {
+        target: root
+        function onCatalogChanged() { root.adoptCatalog() }
     }
 
     background: Rectangle {

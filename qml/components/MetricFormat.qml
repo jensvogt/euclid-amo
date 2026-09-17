@@ -40,15 +40,24 @@ QtObject {
         return Number(value.toFixed(places)).toLocaleString(Qt.locale(), "f", places)
     }
 
+    // Steps of 1000, with kB/MB/GB to match. Both conventions are defensible, but the label is what
+    // tells a reader which one is being applied, and these labels are the decimal ones: dividing by
+    // 1024 under them puts a gigabyte of files on screen as "1000.1 MB", which reads as a rollover
+    // that failed rather than as the 0.98 GiB it actually is. Binary steps would need KiB/MiB/GiB
+    // to be honest about themselves, and that is not what a file size is usually quoted in.
     function bytes(value) {
-        const units = ["B", "KB", "MB", "GB", "TB", "PB"]
+        const units = ["B", "kB", "MB", "GB", "TB", "PB"]
+        const places = unit => unit === 0 ? 0 : 1
         let size = value
         let unit = 0
-        while (Math.abs(size) >= 1024 && unit < units.length - 1) {
-            size /= 1024
+        // The comparison is against the *rounded* number, not the exact one, because the rounded
+        // one is what gets shown: 999,999 bytes is 999.999 kB, which prints as "1000.0 kB" and
+        // wants another step. Only the top unit is allowed to print a four-figure number.
+        while (unit < units.length - 1 && Math.abs(Number(size.toFixed(places(unit)))) >= 1000) {
+            size /= 1000
             unit++
         }
-        return (unit === 0 ? size.toFixed(0) : size.toFixed(1)) + " " + units[unit]
+        return size.toFixed(places(unit)) + " " + units[unit]
     }
 
     function duration(milliseconds) {
