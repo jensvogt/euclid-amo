@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/jensvogt/euclid-amo/compare/1.0.3...v1.0.4) (2026-09-17)
+
+
+### Bug Fixes
+
+* filter dimension split ([b4bdc97](https://github.com/jensvogt/euclid-amo/commit/b4bdc97b4aa20d0078e2470a4d16ecb2591ceaf0))
+
 ## [1.0.3](https://github.com/jensvogt/euclid-amo/compare/1.0.2...v1.0.3) (2026-09-17)
 
 
