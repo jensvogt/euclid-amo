@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/jensvogt/euclid-amo/compare/1.0.1...v1.0.2) (2026-09-17)
+
+
+### Bug Fixes
+
+* dashboard command line option ([b0f4e07](https://github.com/jensvogt/euclid-amo/commit/b0f4e073fa494383f8ef0950587973cf1388c37f))
+
 ## [1.0.1](https://github.com/jensvogt/euclid-amo/compare/1.0.0...v1.0.1) (2026-09-17)
 
 
