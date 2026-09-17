@@ -62,6 +62,11 @@ signals:
                       double latest, double minimum, double maximum, double total);
     void seriesFailed(const QString &panelId, const QString &message);
 
+    // The data loaded, but more than one row landed on the same point of the same line - so the
+    // line joins values that are not successive readings of one thing. Its own signal rather than
+    // an error: the panel keeps its chart and says what would make it a chart of one series.
+    void seriesAmbiguous(const QString &panelId, const QString &message);
+
     // [{name, labelKeys: [...], labelValues: {key: [value, ...]}}], by metric name.
     void catalogLoaded(const QVariantList &metrics);
     void catalogFailed(const QString &message);

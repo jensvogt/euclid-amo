@@ -61,6 +61,20 @@ void EmoClient::fetchSeries(const QString &panelId, const QString &metricName, c
              QString latestStamp;
              bool any = false;
 
+             // Rows that land in the same series at the same instant. A series is named by the
+             // group-by value alone, so any dimension the query did not name still varies inside
+             // it - jvm.memory.used carries application-name, area *and* id, and splitting by the
+             // first of those puts eight memory pools on one line, which is then drawn jumping
+             // between 1.8 MB and 259 MB at every bucket. It looks like a spike and is an artefact.
+             //
+             // Counted rather than merged: what the right answer is depends on what is being asked
+             // (sum the pools? chart one? one line each?), and picking one here would be this class
+             // inventing an aggregation nobody asked for. So it reports, and the panel says so.
+             QHash<QString, QVariantMap> firstRowInSlot;
+             QHash<QString, int> rowsInSlot;
+             QSet<QString> ambiguousKeys;
+             int slotsWithCollisions = 0, worstRowsInSlot = 1;
+
              const QJsonArray items = response.value("items").toArray();
              // EMO answers newest first; a chart wants oldest first, so this walks backwards.
              for (auto it = items.constEnd(); it != items.constBegin();) {
@@ -79,6 +93,28 @@ void EmoClient::fetchSeries(const QString &panelId, const QString &metricName, c
                  // as though it never happened.
                  point["maxValue"] = item.value("maxValue").toDouble();
                  point["labels"] = rowLabels;
+
+                 // The slot a point occupies on the chart: one series, one instant. A second row
+                 // in the same slot is the collision above.
+                 const QString slot = name + QChar(QChar::Null) + stamp;
+                 if (const auto existing = firstRowInSlot.constFind(slot); existing != firstRowInSlot.constEnd()) {
+                     const int rows = ++rowsInSlot[slot];
+                     if (rows == 2) ++slotsWithCollisions;
+                     worstRowsInSlot = std::max(worstRowsInSlot, rows);
+
+                     // Which dimensions actually differ, over the union of both rows' keys: a row
+                     // that carries no labels at all differs from one that does by every key it is
+                     // missing, and looking only at the row in hand would miss that.
+                     QSet<QString> keys;
+                     for (auto k = rowLabels.constBegin(); k != rowLabels.constEnd(); ++k) keys.insert(k.key());
+                     for (auto k = existing->constBegin(); k != existing->constEnd(); ++k) keys.insert(k.key());
+                     for (const auto &key: keys) {
+                         if (existing->value(key) != rowLabels.value(key)) ambiguousKeys.insert(key);
+                     }
+                 } else {
+                     firstRowInSlot.insert(slot, rowLabels);
+                     rowsInSlot.insert(slot, 1);
+                 }
 
                  if (!pointsByName.contains(name)) order.append(name);
                  pointsByName[name].append(point);
@@ -104,6 +140,23 @@ void EmoClient::fetchSeries(const QString &panelId, const QString &metricName, c
              }
 
              emit seriesLoaded(panelId, series, latest, any ? minimum : 0.0, any ? maximum : 0.0, total);
+
+             // After the data, not instead of it. How wrong the chart is depends on how much of it
+             // collides: eight pools on one line at every instant is a chart of nothing, while one
+             // bucket from before an application started sending a label is one spurious step in an
+             // otherwise honest line. Both are worth saying; neither is worth hiding the line over,
+             // so this rides alongside and the panel reports how many points are affected.
+             if (slotsWithCollisions > 0) {
+                 QStringList keys(ambiguousKeys.constBegin(), ambiguousKeys.constEnd());
+                 keys.sort();
+                 emit seriesAmbiguous(panelId,
+                                      tr("%1 rows share one point at %2 of %3 - the line joins them. "
+                                         "Split by or filter on %4.")
+                                              .arg(worstRowsInSlot)
+                                              .arg(slotsWithCollisions)
+                                              .arg(firstRowInSlot.size())
+                                              .arg(keys.isEmpty() ? tr("another dimension") : keys.join(QStringLiteral(", "))));
+             }
          },
          [this, panelId](const QString &message) {
              emit seriesFailed(panelId, message);
