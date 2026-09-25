@@ -4,6 +4,20 @@
     <Version>@VERSION_STRING@</Version>
     <Title>Euclid Application Monitoring Installer</Title>
     <Publisher>Dr. Jens Vogt</Publisher>
+    <!--
+        Branding for the two binaries IFW itself produces - the installer, and the maintenance tool
+        it leaves behind in TargetDir for uninstall and "check for updates". Without these both
+        carry IFW's stock icon, so the thing sitting in Add/Remove Programs looks unrelated to the
+        application it manages.
+
+        InstallerApplicationIcon is deliberately extension-less: IFW appends the platform's own
+        (.ico on Windows, .png on Linux, .icns on macOS). Both euclid-amo.ico and euclid-amo.png sit
+        next to this file, copied there at configure time by CMakeLists.txt from the single sources
+        under dist/win32 and dist/branding, so the installer icon cannot drift from the one compiled
+        into euclid-amo.exe. Paths are resolved relative to this file's directory.
+    -->
+    <InstallerApplicationIcon>euclid-amo</InstallerApplicationIcon>
+    <InstallerWindowIcon>euclid-amo.png</InstallerWindowIcon>
     <StartMenuDir>euclid</StartMenuDir>
     <TargetDir>@ApplicationsDir@/euclid</TargetDir>
     <RemoteRepositories>

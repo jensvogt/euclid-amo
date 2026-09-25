@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"
+     role="img" aria-label="Euclid">
+  <title>Euclid</title>
+
+  <!--
+    Small variant, for 24px: tree node, menu row, toolbar button.
+
+    Not for 16px. At 16 the triangle's interior is about ten pixels across and seven
+    tall, and no three-stroke figure survives in it - the spike and the baseline merge
+    into one dark mass and the mark reads as a filled triangle. euclid-cardio-16.png is
+    therefore the plain mark, same as euclid-16.png.
+
+    Redrawn rather than scaled, on the same grounds as euclid-icon-small.svg: below
+    about 32px the construction arcs fall under a pixel wide and only thicken the
+    silhouette, so they go.
+
+    The trace loses its P and T waves for the same reason - at 16px a 1.5px-tall bump
+    is a smudge on the baseline, and the two smudges flanking the spike read as a
+    thicker baseline rather than as a waveform. What survives is the QRS complex, which
+    is the part that is unmistakably a heartbeat even one stroke wide.
+
+    The baseline leads are stubs rather than the long flats the large mark has. Run them
+    out to the sides and they close the gap to the triangle's lower edges, and the whole
+    bottom half of the figure fills in as one dark band; kept short, the interior stays
+    open and the spike keeps somewhere to read against.
+
+    Triangle stroke drops from the 2.2 of euclid-icon-small.svg to 2.0 for the same
+    reason - the interior here has to hold a second figure, and 2.2 leaves too little of it.
+  -->
+
+  <g fill="none" stroke="currentColor" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M 2.5 20.2 L 21.5 20.2 L 12 3.75 Z" stroke-width="2"/>
+    <path d="M 8.6 15.2 L 11.2 15.2 L 12 9.2 L 12.8 16.9 L 15.4 15.2"
+          stroke-width="1.5"/>
+  </g>
+</svg>

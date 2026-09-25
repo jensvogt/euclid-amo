@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256"
+     role="img" aria-label="Euclid">
+  <title>Euclid</title>
+
+  <!--
+    The Euclid mark with an ECG trace inside it.
+
+    Frame is unchanged from euclid-icon.svg: Elements, Book I, Proposition 1 - the two
+    construction arcs struck from A and B, drawn light, and the resulting equilateral
+    triangle drawn solid.
+
+    The trace is the third weight, between the two: thinner than the triangle so the
+    silhouette still reads first, but fully opaque so it does not sink into the arcs.
+    It sits on a baseline at y=170, low in the figure, because the triangle is widest
+    there and the R spike then has the whole apex to climb into.
+
+    The arcs bow outward from the triangle's edges, so the interior stays clear and the
+    trace collides with nothing. P wave, QRS, T wave - one beat, not a repeating strip;
+    a second beat halves the amplitude at this size and the spike stops being a spike.
+  -->
+
+  <g fill="none" stroke="#7C4DFF" stroke-linejoin="round" stroke-linecap="round">
+    <!-- construction: arc B->C struck from A, arc A->C struck from B -->
+    <g opacity="0.32" stroke-width="7">
+      <path d="M 230 216 A 204 204 0 0 0 128 39.33"/>
+      <path d="M 26 216 A 204 204 0 0 1 128 39.33"/>
+    </g>
+
+    <!-- result: the equilateral triangle -->
+    <path d="M 26 216 L 230 216 L 128 39.33 Z" stroke-width="16"/>
+
+    <!-- ECG: baseline, P wave, QRS complex, T wave, baseline. 76..180, centred on 128. -->
+    <path d="M 76 170 L 84 170 Q 94 155 104 170 L 114 170 L 120 185
+             L 128 104 L 136 191 L 145 170 L 152 170 Q 164 147 176 170 L 180 170"
+          stroke-width="11"/>
+  </g>
+</svg>

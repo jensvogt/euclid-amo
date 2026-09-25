@@ -20,11 +20,17 @@ Component.prototype.createOperations = function()
             "description=Euclid AMO"
         );
 
+        // iconPath is stated rather than left to default, so the desktop shortcut is declared
+        // the same way as the Start menu one above. Both resolve to the icon compiled into the
+        // .exe by dist/win32/euclid-amo.rc - there is no separate .ico deployed next to the
+        // binary to go missing or get out of step with it.
         component.addOperation(
             "CreateShortcut",
-            installer.value("TargetDir") + "/euclid-amo.exe",
+            targetExe,
             installer.value("DesktopDir") + "/euclid-amo.lnk",
-            "workingDirectory=" + installer.value("TargetDir")
+            "workingDirectory=" + installer.value("TargetDir"),
+            "iconPath=" + targetExe,
+            "description=Euclid AMO"
         );
     }
 };

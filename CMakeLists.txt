@@ -20,6 +20,19 @@ string(REPLACE "@VERSION_STRING@" "${VERSION_STRING}" _PACKAGE_XML "${_PACKAGE_X
 string(REPLACE "@RELEASE_DATE@" "${RELEASE_DATE}" _PACKAGE_XML "${_PACKAGE_XML}")
 file(WRITE "${CMAKE_SOURCE_DIR}/dist/win32/installer/packages/de.jensvogt.euclidamo/meta/package.xml" "${_PACKAGE_XML}")
 
+# The icons config.xml names for the installer and the maintenance tool. IFW resolves them relative
+# to config.xml's own directory and will not follow a path out of it, so they are copied in beside
+# the generated config.xml rather than committed there twice - one .ico, one .png, each with exactly
+# one source in the tree. COPYONLY (not a plain file(COPY)) so that editing either source
+# re-triggers configure instead of leaving a stale icon in the next installer build.
+#
+# Extension-less <InstallerApplicationIcon>euclid-amo</InstallerApplicationIcon> means IFW picks the
+# .ico on Windows and the .png on Linux, which is why both are staged on every platform.
+configure_file("${CMAKE_SOURCE_DIR}/dist/win32/euclid-amo.ico"
+        "${CMAKE_SOURCE_DIR}/dist/win32/installer/config/euclid-amo.ico" COPYONLY)
+configure_file("${CMAKE_SOURCE_DIR}/dist/branding/euclid-cardio-64.png"
+        "${CMAKE_SOURCE_DIR}/dist/win32/installer/config/euclid-amo.png" COPYONLY)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -90,6 +103,20 @@ qt_add_qml_module(euclid-amo
 # provides WinMain and calls main) when WIN32_EXECUTABLE is set, so the two have to be turned on
 # together, and are.
 set_target_properties(euclid-amo PROPERTIES WIN32_EXECUTABLE TRUE)
+
+# Windows application icon. qt_add_executable() produces an .exe with no icon resource, which
+# Windows renders as the generic application icon - including on the desktop and Start menu
+# shortcuts the IFW installer creates, because installscript.qs points their iconPath at the .exe.
+# Compiling the .rc in gives all of those the real mark at once, with no installer-side change.
+#
+# enable_language(RC) is explicit rather than relying on it coming along with C/CXX: project()
+# above enables only those two, and a .rc in the source list of a target whose RC language was
+# never enabled is silently ignored by some generators rather than failing the build - which would
+# look exactly like success right up until someone looked at the installed shortcut.
+if (WIN32)
+    enable_language(RC)
+    target_sources(euclid-amo PRIVATE dist/win32/euclid-amo.rc)
+endif ()
 
 target_compile_definitions(euclid-amo PRIVATE APP_VERSION="${VERSION_STRING}" BUILD_DATE="${RELEASE_DATE}")
 

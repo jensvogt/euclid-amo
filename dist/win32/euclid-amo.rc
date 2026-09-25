@@ -1,0 +1,14 @@
+// Windows icon resource, compiled into euclid-amo.exe (see CMakeLists.txt).
+//
+// Without this the .exe carries no icon at all and Windows falls back to the generic
+// application icon everywhere: Explorer, the taskbar, Alt-Tab, and - the reason this
+// exists - both shortcuts the IFW installer creates, since installscript.qs points
+// their iconPath at the .exe.
+//
+// Resource ID 1: Windows picks the numerically lowest ICON resource in the binary as
+// the application icon, so the shell finds this one without anything having to name it.
+// The .ico alongside holds 16/24/32/48/64/128/256, which covers every shell view from
+// the small-icons list to the 256px extra-large tile - a single-frame .ico would get
+// bilinearly stretched into mush in the larger ones.
+
+IDI_ICON1 ICON "euclid-amo.ico"
