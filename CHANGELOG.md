@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.5](https://github.com/jensvogt/euclid-amo/compare/1.0.4...v1.0.5) (2026-09-25)
+
+
+### Bug Fixes
+
+* branding ([b1ab780](https://github.com/jensvogt/euclid-amo/commit/b1ab780195cdcd4d482b65c3562496378d0340af))
+
 ## [1.0.4](https://github.com/jensvogt/euclid-amo/compare/1.0.3...v1.0.4) (2026-09-17)
 
 
