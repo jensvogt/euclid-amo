@@ -40,6 +40,24 @@ Item {
         {label: "5m", seconds: 300}
     ]
 
+    // The name DashboardStore::starterDashboard() gives the wall a first run creates, and the one
+    // most installations keep as their front page - so it holds the top of the list rather than
+    // whatever position its initial letter earns it. Everything else is alphabetical.
+    readonly property string primaryDashboard: "Overview"
+
+    readonly property var orderedDashboardNames: {
+        const rest = []
+        let primaryPresent = false
+        for (const name of root.dashboardNames) {
+            if (name === root.primaryDashboard) primaryPresent = true
+            else rest.push(name)
+        }
+        // localeCompare rather than the default sort, which orders by code point and so files
+        // every capital ahead of every lower-case letter: "Zulu" before "alpha".
+        rest.sort((left, right) => left.localeCompare(right))
+        return primaryPresent ? [root.primaryDashboard].concat(rest) : rest
+    }
+
     function indexOfRefresh(seconds) {
         for (let i = 0; i < root.refreshOptions.length; ++i) {
             if (root.refreshOptions[i].seconds === seconds) return i
@@ -87,7 +105,7 @@ Item {
             width: 220
             height: 30
             anchors.verticalCenter: parent.verticalCenter
-            model: root.dashboardNames
+            model: root.orderedDashboardNames
             Material.theme: Material.Dark
             Material.accent: Theme.accent
             // Assigned rather than bound: a ComboBox clobbers currentIndex while it populates its
@@ -97,10 +115,10 @@ Item {
             Connections {
                 target: root
                 function onDashboardNameChanged() {
-                    dashboardBox.currentIndex = root.dashboardNames.indexOf(root.dashboardName)
+                    dashboardBox.currentIndex = root.orderedDashboardNames.indexOf(root.dashboardName)
                 }
-                function onDashboardNamesChanged() {
-                    dashboardBox.currentIndex = root.dashboardNames.indexOf(root.dashboardName)
+                function onOrderedDashboardNamesChanged() {
+                    dashboardBox.currentIndex = root.orderedDashboardNames.indexOf(root.dashboardName)
                 }
             }
         }

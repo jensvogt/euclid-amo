@@ -46,6 +46,14 @@ Dialog {
     // The panel being edited, or an empty map for a new one.
     property var panel: ({})
     property bool isNew: false
+
+    // The grid's own limits, passed in rather than repeated: the width of a panel is bounded by the
+    // column count, which the grid refuses to let a panel cross, while the height shown here is
+    // only how tall a panel can be and still fit the window - the wall scrolls, so taller is
+    // allowed, just not visible at once.
+    property int gridColumns: 24
+    property int visibleRows: 12
+    property int minimumSpan: 2
     // Which dimension of the panel's label map the one filter row is showing, so that saving
     // replaces that one rather than the whole map. Empty when the panel had no filter.
     property string loadedFilterKey: ""
@@ -72,6 +80,9 @@ Dialog {
         unitBox.currentIndex = Math.max(0, unitBox.model.indexOf(root.panel.unit || ""))
         reduceBox.currentIndex = Math.max(0, reduceBox.model.indexOf(root.panel.reduce || "latest"))
         decimalsBox.value = root.panel.decimals || 0
+        // The defaults a new panel is created at, which Main.addPanel used to apply on its own.
+        widthBox.value = root.panel.w || 8
+        heightBox.value = root.panel.h || 6
         groupByField.editText = root.panel.groupBy || ""
 
         // The filter the panel already carries, put back into the form. It used to be cleared here
@@ -273,6 +284,47 @@ Dialog {
                 }
             }
 
+            // Size in grid units, with the most the wall will take beside each. Width really is
+            // bounded - a panel cannot cross the last column - while the height is advisory: the
+            // wall scrolls, so a taller panel is allowed and simply does not fit the window.
+            Column {
+                width: (parent.width - 14) / 2
+                spacing: 3
+                Text {
+                    text: "Width · max " + root.gridColumns
+                    color: Theme.textFaint
+                    font.pixelSize: 10
+                }
+                SpinBox {
+                    id: widthBox
+                    width: parent.width
+                    from: root.minimumSpan
+                    to: root.gridColumns
+                    Material.theme: Material.Dark
+                    Material.accent: Theme.accent
+                }
+            }
+
+            Column {
+                width: (parent.width - 14) / 2
+                spacing: 3
+                Text {
+                    text: "Height · " + root.visibleRows + " fills the window"
+                    color: Theme.textFaint
+                    font.pixelSize: 10
+                }
+                SpinBox {
+                    id: heightBox
+                    width: parent.width
+                    from: root.minimumSpan
+                    // Not capped at what fits: a wall people scroll is allowed a tall panel, and a
+                    // spin box that refuses one would be inventing a rule the grid does not have.
+                    to: 99
+                    Material.theme: Material.Dark
+                    Material.accent: Theme.accent
+                }
+            }
+
             // Moved down from beside Unit so that the filter and its value stay on one row: with
             // the metric lifted out of the Grid the cells no longer pair the way they did.
             Column {
@@ -379,6 +431,8 @@ Dialog {
                     // Written whatever the type is, so that a panel switched to a line and back
                     // finds the figure it was showing still chosen.
                     edited.reduce = reduceBox.currentText
+                    edited.w = widthBox.value
+                    edited.h = heightBox.value
                     // Built from what the panel already had rather than from the form alone: this
                     // dialog edits one dimension, and a dashboard hand-written to filter on two
                     // should not lose the second one by being opened here. The row's own dimension
