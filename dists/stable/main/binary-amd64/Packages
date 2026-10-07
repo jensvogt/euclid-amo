@@ -106,3 +106,21 @@ Description: no description given
 License: unknown
 Vendor: none
 
+Package: euclid-amo
+Architecture: amd64
+Version: 1.0.6
+Priority: optional
+Section: default
+Maintainer: <runner@runnervmwvtoz>
+Installed-Size: 65624
+Filename: pool/main/e/euclid-amo/euclid-amo-1.0.6-amd64.deb
+Size: 22343204
+MD5sum: c42bf889c24fb3b15e6737de2e2b5671
+SHA1: 530358a473d1903e710299b2fa7b7747ed6be1fd
+SHA256: 437785c2f5eb2d7e72c17f71060412a4f7074d41e1ac93ee30657c21d1f06db1
+SHA512: 92824ddb0b136714941da39df8aad4d07e6396f86424db74c78364f7d68ed329082f3ce7a83a17e56feabd1cc4f61a9eb0550877b6ac8b7cf742489b6fedbc79
+Homepage: http://example.com/no-uri-given
+Description: no description given
+License: unknown
+Vendor: none
+
