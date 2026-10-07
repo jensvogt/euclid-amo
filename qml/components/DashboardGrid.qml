@@ -41,6 +41,18 @@ Item {
 
     implicitHeight: contentHeight
 
+    // How many whole rows fit in a height - what the editor offers as the tallest a panel can be
+    // and still be read without scrolling. Not a limit this grid enforces: the wall scrolls, so a
+    // panel may be taller than the window it is seen through. Width has a real limit, the column
+    // count, which isFree() refuses to let a panel cross.
+    function rowsIn(pixels) {
+        return Math.max(minimumSpan, Math.floor((pixels - gutter) / (rowHeight + gutter)))
+    }
+
+    // The smallest a panel may be, in both directions. The resize gesture has always clamped to
+    // this; naming it lets the editor's fields agree with the corner grip.
+    readonly property int minimumSpan: 2
+
     function pixelX(column) { return gutter + column * cellWidth }
     function pixelY(row) { return gutter + row * (rowHeight + gutter) }
     function pixelWidth(span) { return span * cellWidth - gutter }
@@ -218,9 +230,11 @@ Item {
                     cell.dragging = false
                     const column = Math.max(0, Math.min(root.columns - cell.modelData.w, root.columnAt(cell.x)))
                     const row = Math.max(0, root.rowAt(cell.y))
-                    if (root.isFree(cell.modelData.id, column, row, cell.modelData.w, cell.modelData.h)) {
-                        root.panelGeometryChanged(cell.modelData.id, column, row, cell.modelData.w, cell.modelData.h)
-                    } else {
+                    const accepted = root.isFree(cell.modelData.id, column, row, cell.modelData.w, cell.modelData.h)
+                    const panelId = cell.modelData.id
+                    const span = {w: cell.modelData.w, h: cell.modelData.h}
+
+                    if (!accepted) {
                         // Rejected: the bindings above take the panel home by themselves as soon as
                         // "dragging" goes false, and the border says why for a moment.
                         cell.rejected = true
@@ -228,6 +242,11 @@ Item {
                     }
                     cell.x = root.pixelX(cell.modelData.x)
                     cell.y = root.pixelY(cell.modelData.y)
+
+                    // Announced last, and that is load-bearing: the panel list is rebuilt in answer
+                    // to this, and the Repeater destroys this very delegate on the way - so a line
+                    // after it reading "cell" or "root" runs against an item that no longer exists.
+                    if (accepted) root.panelGeometryChanged(panelId, column, row, span.w, span.h)
                 }
             }
 
@@ -255,22 +274,27 @@ Item {
                 }
                 onPositionChanged: mouse => {
                     if (!cell.resizing) return
-                    cell.width = Math.max(root.cellWidth * 2, grip.startWidth + (mouse.x - grip.startX))
-                    cell.height = Math.max(root.rowHeight * 2, grip.startHeight + (mouse.y - grip.startY))
+                    cell.width = Math.max(root.cellWidth * root.minimumSpan, grip.startWidth + (mouse.x - grip.startX))
+                    cell.height = Math.max(root.rowHeight * root.minimumSpan, grip.startHeight + (mouse.y - grip.startY))
                 }
                 onReleased: {
                     cell.resizing = false
-                    const w = Math.max(2, Math.min(root.columns - cell.modelData.x,
+                    const w = Math.max(root.minimumSpan, Math.min(root.columns - cell.modelData.x,
                                                    Math.round((cell.width + root.gutter) / root.cellWidth)))
-                    const h = Math.max(2, Math.round((cell.height + root.gutter) / (root.rowHeight + root.gutter)))
-                    if (root.isFree(cell.modelData.id, cell.modelData.x, cell.modelData.y, w, h)) {
-                        root.panelGeometryChanged(cell.modelData.id, cell.modelData.x, cell.modelData.y, w, h)
-                    } else {
+                    const h = Math.max(root.minimumSpan, Math.round((cell.height + root.gutter) / (root.rowHeight + root.gutter)))
+                    const accepted = root.isFree(cell.modelData.id, cell.modelData.x, cell.modelData.y, w, h)
+                    const panelId = cell.modelData.id
+                    const at = {x: cell.modelData.x, y: cell.modelData.y}
+
+                    if (!accepted) {
                         cell.rejected = true
                         rejectedTimer.restart()
                     }
                     cell.width = root.pixelWidth(cell.modelData.w)
                     cell.height = root.pixelHeight(cell.modelData.h)
+
+                    // Last, for the reason the drag handler above gives.
+                    if (accepted) root.panelGeometryChanged(panelId, at.x, at.y, w, h)
                 }
 
                 Canvas {

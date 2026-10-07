@@ -451,12 +451,31 @@ ApplicationWindow {
     PanelEditor {
         id: panelEditor
         catalog: window.catalog
+        gridColumns: grid.columns
+        minimumSpan: grid.minimumSpan
+        // How many rows the wall shows at its current size, which is what the editor offers as the
+        // height that fills the window rather than a limit.
+        visibleRows: grid.rowsIn(wall.height)
         onPanelSaved: (panel) => {
-            if (panelEditor.isNew) window.addPanel(panel)
-            else {
-                window.replacePanel(panel.id, panel)
-                window.fetchPanel(panel)
+            if (panelEditor.isNew) {
+                window.addPanel(panel)
+                return
             }
+
+            // A size typed into the editor has to answer to the wall the same way one dragged out
+            // of the corner grip does: the grid refuses an overlap rather than pushing the
+            // neighbours aside, so a panel that no longer fits where it stands keeps the size it
+            // had and is told why. Everything else on the panel is saved either way.
+            const previous = window.panelById(panel.id)
+            if (previous && !grid.isFree(panel.id, panel.x, panel.y, panel.w, panel.h)) {
+                window.showNotice("No room for " + panel.w + "×" + panel.h + " here - "
+                                  + "\"" + panel.title + "\" stays " + previous.w + "×" + previous.h + ".")
+                panel.w = previous.w
+                panel.h = previous.h
+            }
+
+            window.replacePanel(panel.id, panel)
+            window.fetchPanel(panel)
         }
     }
 
