@@ -31,7 +31,7 @@ EmoClient::EmoClient(EuclidBaseClient *baseClient, QObject *parent) : QObject(pa
 
 void EmoClient::fetchSeries(const QString &panelId, const QString &metricName, const QVariantMap &labels,
                             const QString &groupBy, const QString &fromIso, const QString &toIso,
-                            const QString &resolution, const int limit) {
+                            const QString &resolution, const QString &combine, const int limit) {
 
     QJsonObject body;
     body["name"] = metricName;
@@ -50,30 +50,28 @@ void EmoClient::fetchSeries(const QString &panelId, const QString &metricName, c
     body["limit"] = limit;
 
     m_base->post("emo", "list", body, true,
-         [this, panelId, groupBy, metricName](const QJsonObject &response) {
+         [this, panelId, groupBy, metricName, combine](const QJsonObject &response) {
              // Grouped in insertion order rather than by name: the first series to appear is drawn
              // first and keeps its colour across refreshes, which a sorted map would shuffle every
              // time a new dimension value turned up.
              QList<QString> order;
              QMap<QString, QVariantList> pointsByName;
 
-             double latest = 0, minimum = std::numeric_limits<double>::max(), maximum = std::numeric_limits<double>::lowest(), total = 0;
-             QString latestStamp;
-             bool any = false;
-
              // Rows that land in the same series at the same instant. A series is named by the
              // group-by value alone, so any dimension the query did not name still varies inside
-             // it - jvm.memory.used carries application-name, area *and* id, and splitting by the
-             // first of those puts eight memory pools on one line, which is then drawn jumping
-             // between 1.8 MB and 259 MB at every bucket. It looks like a spike and is an artefact.
+             // it: two instances of one application, or the eight memory pools jvm.memory.used
+             // carries under application-name.
              //
-             // Counted rather than merged: what the right answer is depends on what is being asked
-             // (sum the pools? chart one? one line each?), and picking one here would be this class
-             // inventing an aggregation nobody asked for. So it reports, and the panel says so.
+             // What to do about that is the caller's decision, because the right answer depends on
+             // the question - the mean across instances, the sum of the pools, or one line each
+             // from a finer split. "none" keeps every row as its own point, which draws them joined
+             // and is reported as ambiguous; anything else folds them into one point here.
              QHash<QString, QVariantMap> firstRowInSlot;
              QHash<QString, int> rowsInSlot;
+             QHash<QString, int> pointIndexInSlot;
              QSet<QString> ambiguousKeys;
              int slotsWithCollisions = 0, worstRowsInSlot = 1;
+             const bool folding = combine != QLatin1String("none") && !combine.isEmpty();
 
              const QJsonArray items = response.value("items").toArray();
              // EMO answers newest first; a chart wants oldest first, so this walks backwards.
@@ -117,17 +115,29 @@ void EmoClient::fetchSeries(const QString &panelId, const QString &metricName, c
                  }
 
                  if (!pointsByName.contains(name)) order.append(name);
-                 pointsByName[name].append(point);
 
-                 any = true;
-                 total += value;
-                 minimum = std::min(minimum, value);
-                 maximum = std::max(maximum, value);
-                 // "Latest" is by timestamp, not by position: the rows arrive grouped by series, so
-                 // the last one walked belongs to whichever series happened to come last.
-                 if (stamp >= latestStamp) {
-                     latestStamp = stamp;
-                     latest = value;
+                 if (folding && pointIndexInSlot.contains(slot)) {
+                     // Folded into the point already standing there. The running mean is kept
+                     // rather than a sum and a count, so a series of any length costs two numbers.
+                     auto &points = pointsByName[name];
+                     const int index = pointIndexInSlot.value(slot);
+                     QVariantMap merged = points.at(index).toMap();
+                     const double sofar = merged.value(QStringLiteral("value")).toDouble();
+                     const int rows = rowsInSlot.value(slot);
+
+                     if (combine == QLatin1String("average")) merged["value"] = sofar + (value - sofar) / rows;
+                     else if (combine == QLatin1String("sum")) merged["value"] = sofar + value;
+                     else if (combine == QLatin1String("max")) merged["value"] = std::max(sofar, value);
+                     else if (combine == QLatin1String("min")) merged["value"] = std::min(sofar, value);
+
+                     // The bucket's peak is a peak however the means are folded: the highest of the
+                     // rows is the highest anything reached in that bucket.
+                     merged["maxValue"] = std::max(merged.value(QStringLiteral("maxValue")).toDouble(),
+                                                   point.value(QStringLiteral("maxValue")).toDouble());
+                     points[index] = merged;
+                 } else {
+                     pointIndexInSlot.insert(slot, static_cast<int>(pointsByName[name].size()));
+                     pointsByName[name].append(point);
                  }
              }
 
@@ -139,6 +149,32 @@ void EmoClient::fetchSeries(const QString &panelId, const QString &metricName, c
                  series.append(entry);
              }
 
+             // The four figures the number panels show, taken from the points as they ended up
+             // rather than from the rows that went in. With rows folded together those are no
+             // longer the same set, and a stat reading the raw rows would report a total of
+             // values its own chart never drew.
+             double latest = 0, minimum = std::numeric_limits<double>::max();
+             double maximum = std::numeric_limits<double>::lowest(), total = 0;
+             QString latestStamp;
+             bool any = false;
+             for (const auto &entry: series) {
+                 for (const auto &value: entry.toMap().value(QStringLiteral("points")).toList()) {
+                     const QVariantMap point = value.toMap();
+                     const double number = point.value(QStringLiteral("value")).toDouble();
+                     const QString stamp = point.value(QStringLiteral("timestamp")).toString();
+                     any = true;
+                     total += number;
+                     minimum = std::min(minimum, number);
+                     maximum = std::max(maximum, number);
+                     // "Latest" is by timestamp, not by position: the points arrive grouped by
+                     // series, so the last one walked belongs to whichever series came last.
+                     if (stamp >= latestStamp) {
+                         latestStamp = stamp;
+                         latest = number;
+                     }
+                 }
+             }
+
              emit seriesLoaded(panelId, series, latest, any ? minimum : 0.0, any ? maximum : 0.0, total);
 
              // After the data, not instead of it. How wrong the chart is depends on how much of it
@@ -146,7 +182,7 @@ void EmoClient::fetchSeries(const QString &panelId, const QString &metricName, c
              // bucket from before an application started sending a label is one spurious step in an
              // otherwise honest line. Both are worth saying; neither is worth hiding the line over,
              // so this rides alongside and the panel reports how many points are affected.
-             if (slotsWithCollisions > 0) {
+             if (slotsWithCollisions > 0 && !folding) {
                  QStringList keys(ambiguousKeys.constBegin(), ambiguousKeys.constEnd());
                  keys.sort();
                  emit seriesAmbiguous(panelId,

@@ -30,10 +30,15 @@ public:
     // `fromIso`/`toIso` are ISO 8601 instants, or empty for an open end. `resolution` is RAW, HOUR
     // or DAY: the tier to read rather than an aggregation to apply - EMO rolls the tiers up on its
     // own schedule and a query picks one.
+    // "combine" decides what happens when several rows fall on the same point of the same line -
+    // two instances of an application, or dimensions the query did not name. "none" keeps them
+    // apart and reports the panel as ambiguous; "average", "sum", "max" and "min" fold them into
+    // one point. Averaging is the one worth naming: it is how a figure "across all instances" is
+    // asked for, and it only means that if the instances are told apart by a dimension at all.
     Q_INVOKABLE void fetchSeries(const QString &panelId, const QString &metricName,
                                  const QVariantMap &labels, const QString &groupBy,
                                  const QString &fromIso, const QString &toIso,
-                                 const QString &resolution, int limit = 500);
+                                 const QString &resolution, const QString &combine, int limit = 500);
 
     // What there is to chart: every metric name stored, with the label keys seen on it and the
     // values seen under each.

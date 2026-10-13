@@ -79,6 +79,7 @@ Dialog {
         typeBox.currentIndex = Math.max(0, typeBox.model.indexOf(root.panel.type || "line"))
         unitBox.currentIndex = Math.max(0, unitBox.model.indexOf(root.panel.unit || ""))
         reduceBox.currentIndex = Math.max(0, reduceBox.model.indexOf(root.panel.reduce || "latest"))
+        combineBox.currentIndex = Math.max(0, combineBox.model.indexOf(root.panel.combine || "none"))
         decimalsBox.value = root.panel.decimals || 0
         // The defaults a new panel is created at, which Main.addPanel used to apply on its own.
         widthBox.value = root.panel.w || 8
@@ -284,6 +285,37 @@ Dialog {
                 }
             }
 
+            // What to do when several rows land on the same point of the same line - two instances
+            // of one application, or a dimension the split did not name. "none" draws them joined
+            // and the panel says so; "average" is the one to reach for across instances.
+            Column {
+                width: (parent.width - 14) / 2
+                spacing: 3
+                Text { text: "Rows on one point"; color: Theme.textFaint; font.pixelSize: 10 }
+                ComboBox {
+                    id: combineBox
+                    width: parent.width
+                    model: ["none", "average", "sum", "max", "min"]
+                    Material.theme: Material.Dark
+                    Material.accent: Theme.accent
+                }
+            }
+
+            // Kept beside it so the pair reads as one question and the Grid stays even.
+            Column {
+                width: (parent.width - 14) / 2
+                spacing: 3
+                Text { text: ""; color: Theme.textFaint; font.pixelSize: 10 }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "Averaging only means \"across instances\" if the instances carry a "
+                          + "dimension that tells them apart."
+                    color: Theme.textFaint
+                    font.pixelSize: 10
+                }
+            }
+
             // Size in grid units, with the most the wall will take beside each. Width really is
             // bounded - a panel cannot cross the last column - while the height is advisory: the
             // wall scrolls, so a taller panel is allowed and simply does not fit the window.
@@ -431,6 +463,7 @@ Dialog {
                     // Written whatever the type is, so that a panel switched to a line and back
                     // finds the figure it was showing still chosen.
                     edited.reduce = reduceBox.currentText
+                    edited.combine = combineBox.currentText
                     edited.w = widthBox.value
                     edited.h = heightBox.value
                     // Built from what the panel already had rather than from the form alone: this
