@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.7](https://github.com/jensvogt/euclid-amo/compare/1.0.6...v1.0.7) (2026-10-13)
+
+
+### Bug Fixes
+
+* auto refresh ([ff25ce0](https://github.com/jensvogt/euclid-amo/commit/ff25ce0367b8f324ce4d52f4315974d719596c76))
+
 ## [1.0.6](https://github.com/jensvogt/euclid-amo/compare/1.0.5...v1.0.6) (2026-10-07)
 
 
