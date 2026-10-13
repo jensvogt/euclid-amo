@@ -32,6 +32,9 @@ QVariantMap panel(const QString &id, const QString &title, const QString &type, 
     // Which figure over the window a stat or a bar shows; ignored by the other panel types. The
     // same three words BarChart reads - "latest", "max", "total".
     p["reduce"] = QStringLiteral("latest");
+    // What to do with several rows on one point - "none", "average", "sum", "max", "min". See
+    // EmoClient::fetchSeries.
+    p["combine"] = QStringLiteral("none");
     // Empty means "whatever the dashboard is showing". A panel can pin its own range - a stat of
     // the last hour beside a week-long chart - and this is where that would be written.
     p["range"] = QString();

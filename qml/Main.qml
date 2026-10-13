@@ -193,7 +193,8 @@ ApplicationWindow {
         window.outstanding++
         window.setPanelState(panel.id, {loading: true})
         emoClient.fetchSeries(panel.id, panel.metric, panel.labels || ({}), panel.groupBy || "",
-                              window.fromIso(), "", topBar.currentRange.resolution, 1000)
+                              window.fromIso(), "", topBar.currentRange.resolution,
+                              panel.combine || "none", 1000)
     }
 
     function refresh() {
