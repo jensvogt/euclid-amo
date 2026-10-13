@@ -2,8 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 
-// The dashboard itself, rather than anything on it: what it is called, what window and refresh
-// interval it opens with, and whether it should still exist.
+// The dashboard itself, rather than anything on it: what it is called, what window it opens
+// showing, and whether it should still exist. How often it re-asks is not here - that is one
+// interval for the application, in Settings.
 //
 // The name is the interesting one, because it is not only a label - a dashboard is stored as
 // <name>.json and DashboardStore takes the name from the file rather than from inside it, so
@@ -21,15 +22,13 @@ Dialog {
     // The dashboard as it currently stands.
     property string dashboardName: ""
     property string range: "1h"
-    property int refreshSeconds: 30
     property int panelCount: 0
     // Every dashboard on disk, so a rename onto one of them can be refused.
     property var existingNames: []
     // The tables the top bar owns, passed in rather than repeated here.
     property var ranges: []
-    property var refreshOptions: []
 
-    signal dashboardSaved(string name, string range, int refreshSeconds)
+    signal dashboardSaved(string name, string range)
     signal dashboardRemoved(string name)
 
     readonly property string typedName: nameField.text.trim()
@@ -40,7 +39,6 @@ Dialog {
     function openFor(dashboard) {
         nameField.text = dashboard.name || ""
         rangeBox.currentIndex = Math.max(0, root.labels(root.ranges).indexOf(dashboard.range || "1h"))
-        refreshBox.currentIndex = Math.max(0, root.refreshIndex(dashboard.refreshSeconds || 0))
         confirmingDelete = false
         root.open()
         // Focused and selected, because renaming is what this dialog is usually opened for and the
@@ -53,13 +51,6 @@ Dialog {
         const out = []
         for (const entry of table) out.push(entry.label)
         return out
-    }
-
-    function refreshIndex(seconds) {
-        for (let i = 0; i < root.refreshOptions.length; ++i) {
-            if (root.refreshOptions[i].seconds === seconds) return i
-        }
-        return 0
     }
 
     // Deleting is two clicks on one button rather than a second dialog on top of this one: the
@@ -107,36 +98,18 @@ Dialog {
             }
         }
 
-        Grid {
-            width: parent.width
-            columns: 2
-            columnSpacing: 14
-            rowSpacing: 10
-
-            Column {
-                width: (parent.width - 14) / 2
-                spacing: 3
-                Text { text: "Opens showing"; color: Theme.textFaint; font.pixelSize: 10 }
-                ComboBox {
-                    id: rangeBox
-                    width: parent.width
-                    model: root.labels(root.ranges)
-                    Material.theme: Material.Dark
-                    Material.accent: Theme.accent
-                }
-            }
-
-            Column {
-                width: (parent.width - 14) / 2
-                spacing: 3
-                Text { text: "Refreshes every"; color: Theme.textFaint; font.pixelSize: 10 }
-                ComboBox {
-                    id: refreshBox
-                    width: parent.width
-                    model: root.labels(root.refreshOptions)
-                    Material.theme: Material.Dark
-                    Material.accent: Theme.accent
-                }
+        // Half the dialog, on its own: the Grid this shared with the refresh interval had nothing
+        // left to pair it with once that moved to Settings.
+        Column {
+            width: (parent.width - 14) / 2
+            spacing: 3
+            Text { text: "Opens showing"; color: Theme.textFaint; font.pixelSize: 10 }
+            ComboBox {
+                id: rangeBox
+                width: parent.width
+                model: root.labels(root.ranges)
+                Material.theme: Material.Dark
+                Material.accent: Theme.accent
             }
         }
 
@@ -206,8 +179,7 @@ Dialog {
                     Material.accent: Theme.accent
                     onClicked: {
                         root.dashboardSaved(root.typedName,
-                                            root.labels(root.ranges)[rangeBox.currentIndex],
-                                            root.refreshOptions[refreshBox.currentIndex].seconds)
+                                            root.labels(root.ranges)[rangeBox.currentIndex])
                         root.close()
                     }
                 }

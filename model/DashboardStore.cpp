@@ -143,7 +143,9 @@ QVariantMap DashboardStore::emptyDashboard(const QString &name) const {
     dashboard["name"] = name;
     dashboard["range"] = QStringLiteral("1h");
     dashboard["resolution"] = QStringLiteral("RAW");
-    dashboard["refreshSeconds"] = 30;
+    // No refresh interval: how often a wall re-asks is one setting for the application rather than
+    // a property of the dashboard that happens to be up. Files written before that was true still
+    // carry a "refreshSeconds" nobody reads, which costs them nothing.
     dashboard["panels"] = QVariantList{};
     return dashboard;
 }
