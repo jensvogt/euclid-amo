@@ -20,6 +20,26 @@ Dialog {
 
     signal signOutRequested()
 
+    // How often every dashboard re-asks. One interval for the application rather than one per
+    // dashboard: a wall is left running on a screen, and which dashboard happens to be up should
+    // not change how current the numbers on it are. "off" is a real choice - a wall somebody is
+    // reading over a long window does not need a query a minute to say the same thing.
+    readonly property var refreshOptions: [
+        {label: "off", seconds: 0},
+        {label: "10 seconds", seconds: 10},
+        {label: "30 seconds", seconds: 30},
+        {label: "1 minute", seconds: 60},
+        {label: "5 minutes", seconds: 300},
+        {label: "15 minutes", seconds: 900}
+    ]
+
+    function indexOfRefresh(seconds) {
+        for (let i = 0; i < root.refreshOptions.length; ++i) {
+            if (root.refreshOptions[i].seconds === seconds) return i
+        }
+        return 0
+    }
+
     background: Rectangle {
         radius: 14
         color: Theme.panel
@@ -30,6 +50,9 @@ Dialog {
     onOpened: {
         hostField.text = appSettings.host
         portField.text = String(appSettings.port)
+        // Assigned rather than bound: a ComboBox writes its own currentIndex as it populates, and
+        // a binding here would be overwritten the first time it did.
+        refreshBox.currentIndex = root.indexOfRefresh(appSettings.autoRefreshSeconds)
     }
 
     contentItem: Column {
@@ -72,6 +95,22 @@ Dialog {
                     Material.accent: Theme.accent
                     onEditingFinished: appSettings.setPort(parseInt(text))
                 }
+            }
+        }
+
+        Column {
+            width: parent.width
+            spacing: 3
+            Text { text: "Refresh every dashboard"; color: Theme.textFaint; font.pixelSize: 10 }
+            ComboBox {
+                id: refreshBox
+                width: parent.width
+                model: root.refreshOptions.map(option => option.label)
+                Material.theme: Material.Dark
+                Material.accent: Theme.accent
+                // Applied as it is chosen rather than behind an OK: this dialog has no OK, and
+                // every other field here saves on its own too.
+                onActivated: appSettings.setAutoRefreshSeconds(root.refreshOptions[currentIndex].seconds)
             }
         }
 

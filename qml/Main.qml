@@ -114,10 +114,9 @@ ApplicationWindow {
     // name is the file name, so losing the old file before the new one is written would lose the
     // dashboard itself. If the write fails there is nothing to clean up and the old one is still
     // the dashboard.
-    function applyDashboardSettings(name, range, refreshSeconds) {
+    function applyDashboardSettings(name, range) {
         const previousName = window.dashboard.name
-        const dashboard = Object.assign({}, window.dashboard,
-                                        {name: name, range: range, refreshSeconds: refreshSeconds})
+        const dashboard = Object.assign({}, window.dashboard, {name: name, range: range})
 
         if (!dashboardStore.save(name, dashboard)) {
             window.showNotice(dashboardStore.lastError())
@@ -303,9 +302,12 @@ ApplicationWindow {
         }
     }
 
+    // One timer for the application, driven by the interval in Settings rather than by anything
+    // the open dashboard carries - every dashboard refreshes on the same beat, including the one
+    // nobody has looked at since it was made.
     Timer {
-        interval: Math.max(5, window.dashboard.refreshSeconds || 30) * 1000
-        running: window.loggedIn && (window.dashboard.refreshSeconds || 0) > 0
+        interval: Math.max(5, appSettings.autoRefreshSeconds) * 1000
+        running: window.loggedIn && appSettings.autoRefreshSeconds > 0
         repeat: true
         onTriggered: window.refresh()
     }
@@ -322,12 +324,9 @@ ApplicationWindow {
         width: parent.width
         anchors.top: parent.top
         range: window.dashboard.range || "1h"
-        refreshSeconds: window.dashboard.refreshSeconds || 30
         editing: window.editing
         dashboardName: window.dashboard.name || ""
         dashboardNames: dashboardStore.names
-        lastUpdated: window.lastUpdated
-        busy: window.outstanding > 0
 
         onRangeSelected: (label) => {
             window.updateDashboard({range: label})
@@ -335,7 +334,6 @@ ApplicationWindow {
             // points already on the wall are not the points the new range asks for.
             window.refresh()
         }
-        onRefreshSelected: (seconds) => window.updateDashboard({refreshSeconds: seconds})
         onRefreshRequested: window.refresh()
         onEditingToggled: window.editing = !window.editing
         onAddPanelRequested: window.openPanelEditor({type: "line", unit: "", decimals: 0, w: 8, h: 6}, true)
@@ -353,12 +351,24 @@ ApplicationWindow {
         color: Theme.border
     }
 
+    StatusBar {
+        id: statusBar
+        width: parent.width
+        anchors.bottom: parent.bottom
+        dashboardName: window.dashboard.name || ""
+        panelCount: window.panels.length
+        userName: window.currentUser
+        namespaceName: window.currentNamespace
+        lastUpdated: window.lastUpdated
+        busy: window.outstanding > 0
+    }
+
     Flickable {
         id: wall
         anchors.top: topBarRule.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: parent.bottom
+        anchors.bottom: statusBar.top
         contentWidth: width
         contentHeight: grid.contentHeight
         clip: true
@@ -423,7 +433,7 @@ ApplicationWindow {
         id: notice
         property alias text: noticeText.text
 
-        anchors.bottom: parent.bottom
+        anchors.bottom: statusBar.top
         anchors.left: parent.left
         anchors.margins: 16
         width: noticeText.implicitWidth + 24
@@ -483,14 +493,12 @@ ApplicationWindow {
         id: dashboardDialog
         dashboardName: window.dashboard.name || ""
         range: window.dashboard.range || "1h"
-        refreshSeconds: window.dashboard.refreshSeconds || 0
         panelCount: window.panels.length
         existingNames: dashboardStore.names
         // The two tables live on the bar that has always owned them.
         ranges: topBar.ranges
-        refreshOptions: topBar.refreshOptions
 
-        onDashboardSaved: (name, range, refreshSeconds) => window.applyDashboardSettings(name, range, refreshSeconds)
+        onDashboardSaved: (name, range) => window.applyDashboardSettings(name, range)
         onDashboardRemoved: (name) => window.removeDashboard(name)
     }
 

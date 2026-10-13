@@ -13,12 +13,9 @@ Item {
     id: root
 
     property string range: "1h"
-    property int refreshSeconds: 30
     property bool editing: false
     property string dashboardName: ""
     property var dashboardNames: []
-    property string lastUpdated: "—"
-    property bool busy: false
 
     readonly property var ranges: [
         {label: "15m", seconds: 900, resolution: "RAW"},
@@ -27,17 +24,6 @@ Item {
         {label: "24h", seconds: 86400, resolution: "HOUR"},
         {label: "7d", seconds: 604800, resolution: "HOUR"},
         {label: "30d", seconds: 2592000, resolution: "DAY"}
-    ]
-
-    // How often the wall re-asks, as a table for the same reason the ranges are one: two places
-    // offer this now - here and the dashboard dialog - and a second copy of the seconds behind
-    // "1m" is a copy that will eventually disagree.
-    readonly property var refreshOptions: [
-        {label: "off", seconds: 0},
-        {label: "10s", seconds: 10},
-        {label: "30s", seconds: 30},
-        {label: "1m", seconds: 60},
-        {label: "5m", seconds: 300}
     ]
 
     // The name DashboardStore::starterDashboard() gives the wall a first run creates, and the one
@@ -58,13 +44,6 @@ Item {
         return primaryPresent ? [root.primaryDashboard].concat(rest) : rest
     }
 
-    function indexOfRefresh(seconds) {
-        for (let i = 0; i < root.refreshOptions.length; ++i) {
-            if (root.refreshOptions[i].seconds === seconds) return i
-        }
-        return 0
-    }
-
     readonly property var currentRange: {
         for (const entry of root.ranges) {
             if (entry.label === root.range) return entry
@@ -73,7 +52,6 @@ Item {
     }
 
     signal rangeSelected(string label)
-    signal refreshSelected(int seconds)
     signal refreshRequested()
     signal editingToggled()
     signal addPanelRequested()
@@ -162,13 +140,6 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 10
 
-        Text {
-            text: root.busy ? "Refreshing…" : "Updated " + root.lastUpdated
-            color: root.busy ? Theme.accent : Theme.textFaint
-            font.pixelSize: 11
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
         // The ranges, as one segmented control rather than a dropdown: on a wall these are the
         // control people reach for most, and a dropdown costs two clicks to answer "and the last
         // six hours?".
@@ -204,28 +175,6 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.rangeSelected(rangeButton.modelData.label)
                     }
-                }
-            }
-        }
-
-        ComboBox {
-            id: refreshBox
-            width: 96
-            height: 30
-            anchors.verticalCenter: parent.verticalCenter
-            model: root.refreshOptions.map(option => option.label)
-            Material.theme: Material.Dark
-            Material.accent: Theme.accent
-            onActivated: root.refreshSelected(root.refreshOptions[currentIndex].seconds)
-            // Assigned rather than bound, like the dashboard box above: the index is this control's
-            // own state once it exists, and the dashboard dialog can change the interval underneath
-            // it - which the Connections below is for.
-            Component.onCompleted: refreshBox.currentIndex = root.indexOfRefresh(root.refreshSeconds)
-
-            Connections {
-                target: root
-                function onRefreshSecondsChanged() {
-                    refreshBox.currentIndex = root.indexOfRefresh(root.refreshSeconds)
                 }
             }
         }
