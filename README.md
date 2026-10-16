@@ -77,6 +77,52 @@ quiet may be missing from the list, which is why the metric and dimension fields
 as well as picked from. Refusing to chart what the picker cannot offer would make the application
 useless for exactly the series somebody is investigating — the one that stopped.
 
+## Installing
+
+### Debian and Ubuntu, from the APT repository
+
+Every release is published to a signed APT repository, so `apt upgrade` picks up new versions the
+way it does for anything else. Added once:
+
+```sh
+curl -fsSL https://jensvogt.github.io/euclid-amo/apt/euclid-amo.gpg.asc \
+  | sudo gpg --dearmor -o /usr/share/keyrings/euclid-amo.gpg
+
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/euclid-amo.gpg] \
+https://jensvogt.github.io/euclid-amo/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/euclid-amo.list
+
+sudo apt update
+sudo apt install euclid-amo
+```
+
+From then on:
+
+```sh
+sudo apt update
+sudo apt upgrade euclid-amo     # or just: sudo apt upgrade
+```
+
+`arch=amd64` is not decoration: the repository only carries amd64, and without it `apt update` on
+an arm64 machine reports a repository that does not support its architecture.
+
+The package names what it needs. The Qt inside the binary is static, but the X11, xcb, xkbcommon,
+fontconfig and GL libraries underneath it are not, so the `.deb` carries a `Depends:` line computed
+from the binary itself by `dpkg-shlibdeps` at build time. On a machine that is missing any of them
+`apt` pulls them in rather than installing something that will not start.
+
+The repository keeps the five most recent releases. Anything older stays attached to its
+[GitHub release](https://github.com/jensvogt/euclid-amo/releases), because the pool is served from
+GitHub Pages and every release is a twenty-megabyte statically linked binary.
+
+### RPM distributions, and everything else
+
+`.rpm`, `.dmg` and a Windows installer are attached to each
+[release](https://github.com/jensvogt/euclid-amo/releases), and listed with their checksums at
+<https://jensvogt.github.io/euclid-amo/>. Those are downloads rather than a repository: only the
+Debian packages upgrade in place. Windows installs through the Qt Installer Framework, whose
+maintenance tool checks the same GitHub Pages site for updates.
+
 ## Building
 
 Needs the same statically linked Qt 6 build `euclid-rui` uses:

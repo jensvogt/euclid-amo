@@ -80,6 +80,7 @@ qt_add_qml_module(euclid-amo
         qml/components/TimeRangeDialog.qml
         qml/components/DateTimePicker.qml
         qml/components/StatusStrip.qml
+        qml/components/AboutDialog.qml
         qml/components/TimeRangeBar.qml
         qml/components/SettingsDialog.qml
         qml/components/ToggleSwitch.qml
