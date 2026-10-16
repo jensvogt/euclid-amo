@@ -13,6 +13,11 @@ Item {
     id: root
 
     property string range: "1h"
+    // Only meaningful while range is "custom": the two ends of a window somebody typed, as ISO
+    // instants. A relative range is a duration ending now; this one is two fixed moments, which is
+    // the whole difference and the reason it cannot live in the table below.
+    property string customFrom: ""
+    property string customTo: ""
     property bool editing: false
     property string dashboardName: ""
     property var dashboardNames: []
@@ -44,7 +49,45 @@ Item {
         return primaryPresent ? [root.primaryDashboard].concat(rest) : rest
     }
 
+    readonly property real customSpanSeconds: {
+        const from = Date.parse(root.customFrom)
+        const to = Date.parse(root.customTo)
+        if (isNaN(from) || isNaN(to) || to <= from) return 0
+        return (to - from) / 1000
+    }
+
+    // Which tier a window of this length should be read from, taken from the table rather than
+    // written out again: the longest range that fits inside it answers for it.
+    //
+    // That way a custom window lands on the same tier as the button of the same length - a day
+    // typed in reads HOUR exactly as 24h does - and the ones in between inherit from the shorter
+    // neighbour rather than the longer. Nine hours asked of the HOUR tier is nine points; asked of
+    // RAW it is a hundred and eight, which is what somebody picking nine hours wanted to see.
+    function resolutionForSeconds(seconds) {
+        let resolution = root.ranges[0].resolution
+        for (const entry of root.ranges) {
+            if (entry.seconds <= seconds) resolution = entry.resolution
+        }
+        return resolution
+    }
+
+    // Short enough for a button: "45m", "6h", "3d".
+    function formatSpan(seconds) {
+        if (seconds >= 86400) return Math.round(seconds / 86400) + "d"
+        if (seconds >= 3600) return Math.round(seconds / 3600) + "h"
+        return Math.max(1, Math.round(seconds / 60)) + "m"
+    }
+
+    function formatInstant(iso) {
+        const date = new Date(iso)
+        return isNaN(date.getTime()) ? "—" : Qt.formatDateTime(date, "yyyy-MM-dd HH:mm")
+    }
+
     readonly property var currentRange: {
+        if (root.range === "custom" && root.customSpanSeconds > 0) {
+            return {label: "custom", seconds: root.customSpanSeconds,
+                    resolution: root.resolutionForSeconds(root.customSpanSeconds)}
+        }
         for (const entry of root.ranges) {
             if (entry.label === root.range) return entry
         }
@@ -52,6 +95,7 @@ Item {
     }
 
     signal rangeSelected(string label)
+    signal customRangeRequested()
     signal refreshRequested()
     signal editingToggled()
     signal addPanelRequested()
@@ -175,6 +219,44 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.rangeSelected(rangeButton.modelData.label)
                     }
+                }
+            }
+
+            // Part of the same segmented control rather than a button beside it: it answers the
+            // same question as the six to its left, just without assuming the answer ends now.
+            Rectangle {
+                id: customButton
+
+                readonly property bool active: root.range === "custom" && root.customSpanSeconds > 0
+
+                width: 62
+                height: 28
+                color: customButton.active ? Theme.accent
+                       : (customArea.containsMouse ? Theme.panelHeader : "transparent")
+                border.color: Theme.border
+                border.width: 1
+
+                Text {
+                    anchors.centerIn: parent
+                    // The span once there is one, because "custom" on a wall read from across a
+                    // room says nothing about what is on it. The exact ends are a hover away.
+                    text: customButton.active ? root.formatSpan(root.customSpanSeconds) + " ⋯" : "Custom…"
+                    color: customButton.active ? "white" : Theme.textMuted
+                    font.pixelSize: 11
+                }
+
+                ToolTip.visible: customArea.containsMouse
+                ToolTip.text: customButton.active
+                              ? root.formatInstant(root.customFrom) + "  →  " + root.formatInstant(root.customTo)
+                              : "Pick a start and an end"
+                ToolTip.delay: 400
+
+                MouseArea {
+                    id: customArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.customRangeRequested()
                 }
             }
         }

@@ -199,7 +199,7 @@ Dialog {
                 ComboBox {
                     id: typeBox
                     width: parent.width
-                    model: ["line", "bar", "stat", "gauge"]
+                    model: ["line", "bar", "stat", "gauge", "status"]
                     Material.theme: Material.Dark
                     Material.accent: Theme.accent
                 }

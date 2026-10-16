@@ -176,8 +176,19 @@ ApplicationWindow {
     // The window a panel asks for, as an ISO instant. Relative rather than absolute: a wall left
     // running for a week should show the last hour all week, not the hour it was opened in.
     function fromIso() {
+        // A custom range is two fixed moments and stays where it was put; everything else is a
+        // duration ending now, so that a wall left running for a week still shows the last hour.
+        if (window.dashboard.range === "custom" && window.dashboard.customFrom)
+            return window.dashboard.customFrom
         const seconds = topBar.currentRange.seconds
         return new Date(Date.now() - seconds * 1000).toISOString()
+    }
+
+    // Empty for the relative ranges, which EMO reads as "up to whatever you have".
+    function toIso() {
+        if (window.dashboard.range === "custom" && window.dashboard.customTo)
+            return window.dashboard.customTo
+        return ""
     }
 
     function setPanelState(panelId, state) {
@@ -191,9 +202,15 @@ ApplicationWindow {
     function fetchPanel(panel) {
         if (!window.loggedIn || !panel.metric) return
         window.outstanding++
-        window.setPanelState(panel.id, {loading: true})
+        // The window asked for, recorded alongside the answer: a panel that draws time with no
+        // data in it - see StatusStrip - cannot tell an empty stretch from the end of the data
+        // without knowing what was asked for.
+        const from = window.fromIso()
+        const to = window.toIso()
+        window.setPanelState(panel.id, {loading: true, windowFrom: from,
+                                        windowTo: to || new Date().toISOString()})
         emoClient.fetchSeries(panel.id, panel.metric, panel.labels || ({}), panel.groupBy || "",
-                              window.fromIso(), "", topBar.currentRange.resolution,
+                              from, to, topBar.currentRange.resolution,
                               panel.combine || "none", 1000)
     }
 
@@ -328,7 +345,16 @@ ApplicationWindow {
         editing: window.editing
         dashboardName: window.dashboard.name || ""
         dashboardNames: dashboardStore.names
+        customFrom: window.dashboard.customFrom || ""
+        customTo: window.dashboard.customTo || ""
 
+        onCustomRangeRequested: {
+            timeRangeDialog.resolutionHint = topBar.currentRange.resolution
+            // Seeded with whatever the wall is showing: for a relative range that is the window
+            // ending now, which is the obvious thing to start adjusting.
+            timeRangeDialog.openFor(window.fromIso(),
+                                    window.toIso() || new Date().toISOString())
+        }
         onRangeSelected: (label) => {
             window.updateDashboard({range: label})
             // Refetched rather than redrawn: the range is a resolution as much as a window, so the
@@ -487,6 +513,14 @@ ApplicationWindow {
 
             window.replacePanel(panel.id, panel)
             window.fetchPanel(panel)
+        }
+    }
+
+    TimeRangeDialog {
+        id: timeRangeDialog
+        onRangeChosen: (fromIso, toIso) => {
+            window.updateDashboard({range: "custom", customFrom: fromIso, customTo: toIso})
+            window.refresh()
         }
     }
 
