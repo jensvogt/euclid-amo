@@ -135,6 +135,7 @@ Item {
                         case "stat": return statComponent
                         case "gauge": return gaugeComponent
                         case "bar": return barComponent
+                        case "status": return statusComponent
                         default: return lineComponent
                         }
                     }
@@ -169,6 +170,19 @@ Item {
                     unit: cell.modelData.unit || ""
                     decimals: cell.modelData.decimals || 0
                     reduce: cell.modelData.reduce || "latest"
+                }
+            }
+
+            Component {
+                id: statusComponent
+                StatusStrip {
+                    series: cell.panelData.series || []
+                    unit: cell.modelData.unit || ""
+                    decimals: cell.modelData.decimals || 0
+                    // The window the panel was fetched for, so that time with nothing in it is
+                    // drawn rather than left off the end.
+                    windowFrom: cell.panelData.windowFrom || ""
+                    windowTo: cell.panelData.windowTo || ""
                 }
             }
 
