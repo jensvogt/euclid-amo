@@ -13,6 +13,11 @@ CMakeLists.txt.user*
 dist/win32/installer/config/config.xml
 dist/win32/installer/packages/de.jensvogt.euclidamo/meta/package.xml
 
+# Staged into config/ at configure time by CMakeLists.txt, for config.xml's InstallerApplicationIcon
+# / InstallerWindowIcon. Sources are dist/win32/euclid-amo.ico and dist/branding/euclid-cardio-64.png.
+dist/win32/installer/config/euclid-amo.ico
+dist/win32/installer/config/euclid-amo.png
+
 # Windows installer build output (binarycreator/repogen)
 dist/win32/installer/packages/de.jensvogt.euclidamo/data/
 dist/win32/installer/*.exe

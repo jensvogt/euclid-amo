@@ -28,9 +28,15 @@ install -D -m 755 "$binary" "$package_dir/usr/bin/$app_name"
 install -D -m 644 "$here/$app_name.desktop" "$package_dir/usr/share/applications/$app_name.desktop"
 
 # The scalable icon is the one most desktops prefer; the bitmaps are what the rest fall back to.
-install -D -m 644 "$branding/euclid-icon.svg" "$package_dir/usr/share/icons/hicolor/scalable/apps/$app_name.svg"
+#
+# euclid-cardio-* rather than euclid-*: the cardio mark is what the Windows build embeds in the
+# .exe, and an application that looks like two different programs depending on the platform it was
+# installed on is worse than either mark on its own. euclid-cardio-16.png is deliberately the plain
+# triangle - see the note in euclid-cardio-icon-small.svg - so the 16px theme entry still carries
+# the family silhouette even though the trace cannot survive at that size.
+install -D -m 644 "$branding/euclid-cardio-icon.svg" "$package_dir/usr/share/icons/hicolor/scalable/apps/$app_name.svg"
 for size in 16 24 32 64 256 512; do
-    install -D -m 644 "$branding/euclid-$size.png" \
+    install -D -m 644 "$branding/euclid-cardio-$size.png" \
         "$package_dir/usr/share/icons/hicolor/${size}x${size}/apps/$app_name.png"
 done
 
