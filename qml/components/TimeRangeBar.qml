@@ -102,6 +102,7 @@ Item {
     signal dashboardSelected(string name)
     signal newDashboardRequested()
     signal editDashboardRequested()
+    signal aboutRequested()
     signal settingsRequested()
 
     implicitHeight: 52
@@ -112,14 +113,31 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 12
 
+        // The mark, drawn rather than loaded: it is a rounded square, and an image would mean
+        // carrying qtsvg into a statically linked binary for one shape. Clicking it opens the
+        // about box, which is where a mark in the corner of a window usually leads.
         Rectangle {
+            id: mark
+
             width: 26
             height: 26
             radius: 7
-            color: "transparent"
+            color: markArea.containsMouse ? Qt.rgba(0.49, 0.36, 1, 0.18) : "transparent"
             border.color: "#7c5cff"
             border.width: 2
             anchors.verticalCenter: parent.verticalCenter
+
+            ToolTip.visible: markArea.containsMouse
+            ToolTip.text: "About Euclid AMO"
+            ToolTip.delay: 500
+
+            MouseArea {
+                id: markArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.aboutRequested()
+            }
         }
 
         ComboBox {

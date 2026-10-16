@@ -35,9 +35,10 @@
 
 <h2>Debian/Ubuntu (APT repository)</h2>
 <pre><code>curl -fsSL https://jensvogt.github.io/euclid-amo/apt/euclid-amo.gpg.asc | sudo gpg --dearmor -o /usr/share/keyrings/euclid-amo.gpg
-echo "deb [signed-by=/usr/share/keyrings/euclid-amo.gpg] https://jensvogt.github.io/euclid-amo/apt stable main" | sudo tee /etc/apt/sources.list.d/euclid-amo.list
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/euclid-amo.gpg] https://jensvogt.github.io/euclid-amo/apt stable main" | sudo tee /etc/apt/sources.list.d/euclid-amo.list
 sudo apt update
 sudo apt install euclid-amo</code></pre>
+<p>Later releases arrive with <code>sudo apt update &amp;&amp; sudo apt upgrade euclid-amo</code>.</p>
 
 <table>
     <thead>

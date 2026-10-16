@@ -306,8 +306,35 @@ jobs:
 
       - name: Build DEB with fpm
         run: |
+          set -euo pipefail
+
+          # What the binary actually links against, asked of dpkg rather than kept in a list here.
+          # The Qt inside it is static, but the X11, xcb, xkbcommon, fontconfig and GL libraries
+          # underneath that are not - and a package that names none of them installs onto a clean
+          # machine perfectly and then fails to start, which is the worst of both. dpkg-shlibdeps
+          # reads the ELF and says what provides each library, so the list cannot drift from the
+          # binary the way a hand-written one does.
+          mkdir -p debian && : > debian/control
+          mapfile -t DEPENDS < <(dpkg-shlibdeps -O --ignore-missing-info "$BUILD_DIR/$APP_NAME" \
+                                   | sed 's/^shlibs:Depends=//' | tr ',' '\n' | sed 's/^ *//; /^$/d')
+          echo "Depends: ${DEPENDS[*]}"
+
+          DEPEND_ARGS=()
+          for dependency in "${DEPENDS[@]}"; do DEPEND_ARGS+=(--depends "$dependency"); done
+
+          # The rest is what "apt show euclid-amo" prints. Left to itself fpm fills these in with
+          # the build runner's hostname and "no description given", which is what every euclid-rui
+          # release so far has carried.
           fpm -s dir -t deb --name "${APP_NAME}" --version "${SEMVER}" --architecture amd64 \
+            "${DEPEND_ARGS[@]}" \
+            --maintainer "Dr. Jens Vogt <jensvogt@users.noreply.github.com>" \
+            --vendor "Euclid" \
+            --category "utils" \
+            --url "https://github.com/jensvogt/euclid-amo" \
+            --description "Qt 6 dashboard wall over euclid's monitoring module (EMO)" \
             --package "${APP_NAME}-${SEMVER}-amd64.deb" -C "$PACKAGE_DIR" usr/bin usr/share
+
+          dpkg-deb --info "${APP_NAME}-${SEMVER}-amd64.deb"
 
       - name: Upload .deb
         uses: actions/upload-artifact@v4
@@ -358,7 +385,15 @@ jobs:
 
       - name: Build RPM with fpm
         run: |
+          # No --depends here: the package names dpkg-shlibdeps produces are Debian's, and an
+          # RPM asking for "libxcb-cursor0" would be asking for something no RPM distribution has.
+          # rpmbuild finds its own requirements from the ELF.
           fpm -s dir -t rpm --name "${APP_NAME}" --version "${SEMVER}" --architecture amd64 \
+            --maintainer "Dr. Jens Vogt <jensvogt@users.noreply.github.com>" \
+            --vendor "Euclid" \
+            --category "Applications/System" \
+            --url "https://github.com/jensvogt/euclid-amo" \
+            --description "Application monitoring dashboards over the euclid monitoring module" \
             --package "${APP_NAME}-${SEMVER}-amd64.rpm" -C "$PACKAGE_DIR" usr/bin usr/share
 
       - name: Upload RPM
@@ -407,6 +442,20 @@ jobs:
           POOL_DIR="apt-repo/pool/main/e/euclid-amo"
           mkdir -p "$POOL_DIR"
           cp artifacts/linux/*.deb "$POOL_DIR/"
+
+      - name: Keep the pool to the last few releases
+        run: |
+          set -euo pipefail
+          POOL_DIR="apt-repo/pool/main/e/euclid-amo"
+          # Every release adds a statically linked binary of twenty-odd megabytes, and the pool is
+          # served from GitHub Pages, which has a size limit the repository would eventually walk
+          # into. Only what apt might install has to live here; every version ever built stays
+          # attached to its GitHub release.
+          #
+          # Sorted by version rather than by date: a fresh clone gives every file the same
+          # timestamp, so "the newest files" would be whichever order git wrote them in.
+          KEEP=5
+          ls -1 "$POOL_DIR"/*.deb | sort -V | head -n -"$KEEP" | xargs -r rm -v
 
       - name: Import GPG signing key
         run: echo "${{ secrets.APT_GPG_PRIVATE_KEY }}" | gpg --batch --import

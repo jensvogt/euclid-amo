@@ -368,6 +368,7 @@ ApplicationWindow {
         onNewDashboardRequested: newDashboardDialog.open()
         onEditDashboardRequested: dashboardDialog.openFor(window.dashboard)
         onSettingsRequested: settingsDialog.open()
+        onAboutRequested: aboutDialog.open()
     }
 
     Rectangle {
@@ -536,6 +537,8 @@ ApplicationWindow {
         onDashboardSaved: (name, range) => window.applyDashboardSettings(name, range)
         onDashboardRemoved: (name) => window.removeDashboard(name)
     }
+
+    AboutDialog { id: aboutDialog }
 
     SettingsDialog {
         id: settingsDialog
