@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 
 // Minimal Canvas-based multi-series line chart - no QtCharts dependency (the statically-linked Qt
 // build this app ships with only includes qtbase/qtdeclarative/qtshadertools, and QtCharts is
@@ -292,52 +293,243 @@ Item {
     }
 
     // Legend - click an entry to hide or show that series.
+    //
+    // The inline one is a single row that does not wrap, so past a handful of series it ran off
+    // the left edge of the chart and took the earliest names with it. It now gives way to the
+    // button beside it as soon as it no longer fits, and the button opens the same list somewhere
+    // it can be read.
     Row {
-        id: legend
+        id: legendBar
         visible: root.hasData && root.series.length > 1
         anchors.top: parent.top
         anchors.right: parent.right
-        spacing: 14
+        spacing: 10
 
-        Repeater {
-            model: root.series
-            // An Item, not the Row itself: a Row refuses to position children that use fill or
-            // horizontal anchors, and the click target has to fill the entry - putting the
-            // MouseArea straight into the Row silently breaks the whole legend.
-            delegate: Item {
-                id: legendEntry
-                required property var modelData
+        Row {
+            id: legend
+            visible: root.hasData && root.series.length > 1
+                     && legend.implicitWidth + legendButton.width + legendBar.spacing <= root.width - root.leftPad
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 14
 
-                width: entryRow.implicitWidth
-                height: entryRow.implicitHeight
-                opacity: root.isHidden(legendEntry.modelData.name) ? 0.4 : 1
+            Repeater {
+                model: root.series
+                // An Item, not the Row itself: a Row refuses to position children that use fill or
+                // horizontal anchors, and the click target has to fill the entry - putting the
+                // MouseArea straight into the Row silently breaks the whole legend.
+                delegate: Item {
+                    id: legendEntry
+                    required property var modelData
 
-                Row {
-                    id: entryRow
-                    spacing: 5
+                    width: entryRow.implicitWidth
+                    height: entryRow.implicitHeight
+                    opacity: root.isHidden(legendEntry.modelData.name) ? 0.4 : 1
 
-                    Rectangle {
-                        width: 8
-                        height: 8
-                        radius: 4
-                        color: legendEntry.modelData.color
-                        anchors.verticalCenter: parent.verticalCenter
+                    Row {
+                        id: entryRow
+                        spacing: 5
+
+                        Rectangle {
+                            width: 8
+                            height: 8
+                            radius: 4
+                            color: legendEntry.modelData.color
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: legendEntry.modelData.name + (legendEntry.modelData.points.length > 0
+                                  ? " (" + root.formatValue(legendEntry.modelData.points[legendEntry.modelData.points.length - 1].value) + ")"
+                                  : "")
+                            color: "#9aa1ac"
+                            font.pixelSize: 11
+                            font.strikeout: root.isHidden(legendEntry.modelData.name)
+                        }
                     }
-                    Text {
-                        text: legendEntry.modelData.name + (legendEntry.modelData.points.length > 0
-                              ? " (" + root.formatValue(legendEntry.modelData.points[legendEntry.modelData.points.length - 1].value) + ")"
-                              : "")
-                        color: "#9aa1ac"
-                        font.pixelSize: 11
-                        font.strikeout: root.isHidden(legendEntry.modelData.name)
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -3
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.toggleSeries(legendEntry.modelData.name)
                     }
                 }
+            }
+        }
 
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -3
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.toggleSeries(legendEntry.modelData.name)
+        // Always there once there is more than one line, whether or not the inline legend fits:
+        // it is also the only way back when every series has been clicked out of sight.
+        Rectangle {
+            id: legendButton
+
+            visible: root.hasData && root.series.length > 1
+            anchors.verticalCenter: parent.verticalCenter
+            width: buttonRow.implicitWidth + 14
+            height: 18
+            radius: 9
+            color: legendPopup.visible || legendButtonArea.containsMouse
+                   ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(1, 1, 1, 0.06)
+
+            Row {
+                id: buttonRow
+                anchors.centerIn: parent
+                spacing: 5
+
+                Text {
+                    text: "☰"
+                    color: "#9aa1ac"
+                    font.pixelSize: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    text: root.series.length + " series"
+                    color: "#9aa1ac"
+                    font.pixelSize: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            MouseArea {
+                id: legendButtonArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: legendPopup.visible ? legendPopup.close() : legendPopup.open()
+            }
+        }
+    }
+
+    // The same list, somewhere with room for it: one line per series, however many there are.
+    Popup {
+        id: legendPopup
+
+        // Hung under the button rather than centred on the panel: it belongs to this chart, and a
+        // panel is often small enough that a centred popup would cover the thing being read.
+        //
+        // Right edges aligned, because the button sits against the right edge of the chart: hung
+        // from its left the list would run off the side of the window and take the ends of the
+        // names with it, which is the thing this was built to stop.
+        parent: legendButton
+        x: legendButton.width - width
+        y: legendButton.height + 4
+        width: 240
+        padding: 8
+        modal: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+
+        background: Rectangle {
+            radius: 8
+            color: Theme.panelHeader
+            border.color: Theme.border
+            border.width: 1
+        }
+
+        contentItem: Column {
+            spacing: 6
+
+            Item {
+                width: parent.width
+                height: 14
+
+                Text {
+                    anchors.left: parent.left
+                    text: root.series.length + " series"
+                    color: Theme.textFaint
+                    font.pixelSize: 10
+                }
+
+                // Only when there is something to undo, so the row is not offering to do nothing.
+                Text {
+                    anchors.right: parent.right
+                    visible: Object.keys(root.hiddenSeries).length > 0
+                    text: "show all"
+                    color: showAllArea.containsMouse ? Theme.accent : Theme.textMuted
+                    font.pixelSize: 10
+
+                    MouseArea {
+                        id: showAllArea
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.hiddenSeries = ({})
+                    }
+                }
+            }
+
+            Rectangle { width: parent.width; height: 1; color: Theme.border }
+
+            // Scrolled rather than grown: a metric split by host can have dozens of values, and a
+            // popup taller than the window is no more readable than the row it replaced.
+            ScrollView {
+                width: parent.width
+                height: Math.min(260, popupEntries.implicitHeight)
+                clip: true
+
+                Column {
+                    id: popupEntries
+                    width: legendPopup.availableWidth
+
+                    Repeater {
+                        model: root.series
+
+                        delegate: Rectangle {
+                            id: popupEntry
+                            required property var modelData
+
+                            width: popupEntries.width
+                            height: 22
+                            color: popupEntryArea.containsMouse ? Theme.grid : "transparent"
+                            radius: 4
+
+                            Row {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.leftMargin: 6
+                                anchors.rightMargin: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 6
+
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    color: popupEntry.modelData.color
+                                    opacity: root.isHidden(popupEntry.modelData.name) ? 0.35 : 1
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    width: parent.width - 14 - valueLabel.width - 12
+                                    text: popupEntry.modelData.name
+                                    color: Theme.text
+                                    opacity: root.isHidden(popupEntry.modelData.name) ? 0.45 : 1
+                                    font.pixelSize: 11
+                                    font.strikeout: root.isHidden(popupEntry.modelData.name)
+                                    elide: Text.ElideMiddle
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    id: valueLabel
+                                    text: popupEntry.modelData.points.length > 0
+                                          ? root.formatValue(popupEntry.modelData.points[popupEntry.modelData.points.length - 1].value)
+                                          : "—"
+                                    color: Theme.textMuted
+                                    opacity: root.isHidden(popupEntry.modelData.name) ? 0.45 : 1
+                                    font.pixelSize: 11
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            MouseArea {
+                                id: popupEntryArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.toggleSeries(popupEntry.modelData.name)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -345,8 +537,8 @@ Item {
 
     Canvas {
         id: canvas
-        anchors.top: legend.visible ? legend.bottom : parent.top
-        anchors.topMargin: legend.visible ? 6 : 0
+        anchors.top: legendBar.visible ? legendBar.bottom : parent.top
+        anchors.topMargin: legendBar.visible ? 6 : 0
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
