@@ -345,9 +345,12 @@ ApplicationWindow {
         editing: window.editing
         dashboardName: window.dashboard.name || ""
         dashboardNames: dashboardStore.names
+        refreshSeconds: appSettings.autoRefreshSeconds
         customFrom: window.dashboard.customFrom || ""
         customTo: window.dashboard.customTo || ""
 
+        // Straight to the setting, which the timer and the Settings dialog both read.
+        onRefreshSelected: (seconds) => appSettings.setAutoRefreshSeconds(seconds)
         onCustomRangeRequested: {
             timeRangeDialog.resolutionHint = topBar.currentRange.resolution
             // Seeded with whatever the wall is showing: for a relative range that is the window

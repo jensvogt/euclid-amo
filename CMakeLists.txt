@@ -69,6 +69,7 @@ set_source_files_properties(qml/components/DateFormat.qml PROPERTIES QT_QML_SING
 set_source_files_properties(qml/components/SizeFormat.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(qml/components/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 set_source_files_properties(qml/components/MetricFormat.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/components/RefreshIntervals.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(euclid-amo
         URI EuclidAmo
@@ -94,6 +95,7 @@ qt_add_qml_module(euclid-amo
         qml/components/DateTimePicker.qml
         qml/components/StatusStrip.qml
         qml/components/AboutDialog.qml
+        qml/components/RefreshIntervals.qml
         qml/components/TimeRangeBar.qml
         qml/components/SettingsDialog.qml
         qml/components/ToggleSwitch.qml

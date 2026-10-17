@@ -13,6 +13,9 @@ Item {
     id: root
 
     property string range: "1h"
+    // The application's one auto-refresh interval, shown here as a shortcut to the setting rather
+    // than as a second copy of it: picking one writes to the same place Settings does.
+    property int refreshSeconds: 0
     // Only meaningful while range is "custom": the two ends of a window somebody typed, as ISO
     // instants. A relative range is a duration ending now; this one is two fixed moments, which is
     // the whole difference and the reason it cannot live in the table below.
@@ -103,6 +106,7 @@ Item {
     signal newDashboardRequested()
     signal editDashboardRequested()
     signal aboutRequested()
+    signal refreshSelected(int seconds)
     signal settingsRequested()
 
     implicitHeight: 52
@@ -275,6 +279,39 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.customRangeRequested()
+                }
+            }
+        }
+
+        // Back beside the manual refresh, where it was before the interval became one setting for
+        // the application: this is the control somebody reaches for when a wall is being watched,
+        // and sending them through Settings for it was two clicks too many.
+        ComboBox {
+            id: refreshBox
+            // Wide enough for the longest label plus Material's indicator; at 74 the "m" of
+            // "15m" was cut in half.
+            width: 90
+            height: 30
+            anchors.verticalCenter: parent.verticalCenter
+            model: RefreshIntervals.shortLabels()
+            Material.theme: Material.Dark
+            Material.accent: Theme.accent
+
+            ToolTip.visible: hovered
+            ToolTip.text: "How often the wall re-asks - the same setting Settings holds"
+            ToolTip.delay: 600
+
+            onActivated: root.refreshSelected(RefreshIntervals.secondsAt(currentIndex))
+
+            // Assigned rather than bound: a ComboBox writes its own currentIndex while it
+            // populates, and a binding would be overwritten the first time it did. The
+            // Connections keeps it in step with the setting being changed in the dialog.
+            Component.onCompleted: refreshBox.currentIndex = RefreshIntervals.indexOf(root.refreshSeconds)
+
+            Connections {
+                target: root
+                function onRefreshSecondsChanged() {
+                    refreshBox.currentIndex = RefreshIntervals.indexOf(root.refreshSeconds)
                 }
             }
         }
