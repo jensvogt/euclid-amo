@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.11](https://github.com/jensvogt/euclid-amo/compare/1.0.10...v1.0.11) (2026-10-17)
+
+
+### Bug Fixes
+
+* new widgets, new custom calendar ([87ab684](https://github.com/jensvogt/euclid-amo/commit/87ab6846321684dfa6e014f120d314eb140bc141))
+
 ## [1.0.10](https://github.com/jensvogt/euclid-amo/compare/1.0.9...v1.0.10) (2026-10-16)
 
 
