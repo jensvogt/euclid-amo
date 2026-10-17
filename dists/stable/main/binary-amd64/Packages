@@ -19,21 +19,22 @@ Vendor: Euclid
 
 Package: euclid-amo
 Architecture: amd64
-Version: 1.0.6
+Version: 1.0.11
 Priority: optional
-Section: default
-Maintainer: <runner@runnervmwvtoz>
-Installed-Size: 65624
-Filename: pool/main/e/euclid-amo/euclid-amo-1.0.6-amd64.deb
-Size: 22343204
-MD5sum: c42bf889c24fb3b15e6737de2e2b5671
-SHA1: 530358a473d1903e710299b2fa7b7747ed6be1fd
-SHA256: 437785c2f5eb2d7e72c17f71060412a4f7074d41e1ac93ee30657c21d1f06db1
-SHA512: 92824ddb0b136714941da39df8aad4d07e6396f86424db74c78364f7d68ed329082f3ce7a83a17e56feabd1cc4f61a9eb0550877b6ac8b7cf742489b6fedbc79
-Homepage: http://example.com/no-uri-given
-Description: no description given
+Section: utils
+Maintainer: Dr. Jens Vogt <jensvogt@users.noreply.github.com>
+Installed-Size: 66884
+Depends: libbrotli1 (>= 0.6.0), libc6 (>= 2.35), libegl1, libfontconfig1 (>= 2.12.6), libfreetype6 (>= 2.9.1), libgcc-s1 (>= 3.4), libglib2.0-0 (>= 2.45.6), libglx0, libice6 (>= 1:1.0.0), libopengl0, libsm6, libstdc++6 (>= 12), libx11-6, libx11-xcb1 (>= 2:1.7.5), libxcb-cursor0 (>= 0.0.99), libxcb-glx0, libxcb-icccm4 (>= 0.4.1), libxcb-image0 (>= 0.2.1), libxcb-keysyms1 (>= 0.4.0), libxcb-randr0 (>= 1.12), libxcb-render-util0, libxcb-render0, libxcb-shape0, libxcb-shm0 (>= 1.10), libxcb-sync1, libxcb-xfixes0, libxcb-xkb1, libxcb1 (>= 1.8), libxkbcommon-x11-0 (>= 0.5.0), libxkbcommon0 (>= 0.5.0), libzstd1 (>= 1.4.0), zlib1g (>= 1:1.2.3.4)
+Filename: pool/main/e/euclid-amo/euclid-amo-1.0.11-amd64.deb
+Size: 22578402
+MD5sum: bda952dd5b10648208e4f40cb2d4f08a
+SHA1: 6cf60a2242a8a89742fac5f05e95210885e1c46e
+SHA256: 3c39bcc9fc93e2a007ecf94faadc02d4cc4c9f879f44dcdf1d8db9ac04ddb7cd
+SHA512: 8e6499e74c669fd240de7c12616d6e957d552e48ab4e9f1cc69e87e209d2398f5ff69af1e7a7a0068a11c753050c9b27056168212b39df2f93c9daefbb287d33
+Homepage: https://github.com/jensvogt/euclid-amo
+Description: Qt 6 dashboard wall over euclid's monitoring module (EMO)
 License: unknown
-Vendor: none
+Vendor: Euclid
 
 Package: euclid-amo
 Architecture: amd64
