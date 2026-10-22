@@ -85,6 +85,8 @@ qt_add_qml_module(euclid-amo
         qml/components/BarChart.qml
         qml/components/StatPanel.qml
         qml/components/GaugePanel.qml
+        qml/components/MainMenu.qml
+        qml/components/ServerDashboardDialog.qml
         qml/components/DashboardGrid.qml
         qml/components/PanelFrame.qml
         qml/components/PanelEditor.qml
@@ -136,3 +138,30 @@ target_link_libraries(euclid-amo
         Qt6::Quick
         Qt6::QuickControls2
 )
+
+# Puts Qt's DLLs, plugins and QML modules in the build directory, so the build tree runs as-is.
+#
+# Needed because of an asymmetry that is easy to trip over: the static Qt this project releases
+# from is configured -release only (see build-release.yml), so there are no static debug libraries
+# and a Debug build necessarily resolves to the *shared* Qt instead. That binary then wants
+# Qt6Cored.dll, the "windows" platform plugin and QtQuick's own QML modules at load time. Started
+# from an IDE or from Explorer, none of them are findable: the loader gives up before main() with
+# no dialog and no output, exit code 127, which reads as "it just doesn't start".
+#
+# Guarded on Qt being shared rather than on the build type, because that is the actual condition.
+# The release CI build links Qt statically, has nothing to copy, and must not grow a deploy step -
+# which is what build-release.yml already says it does not need.
+if (WIN32 AND QT6_IS_SHARED_LIBS_BUILD AND TARGET Qt6::windeployqt)
+    add_custom_command(TARGET euclid-amo POST_BUILD
+            COMMAND Qt6::windeployqt
+            # The QML modules cannot be read off the binary: the app's own QML is baked into it as
+            # a resource, so windeployqt is pointed at the sources to find what they import.
+            --qmldir "${CMAKE_SOURCE_DIR}/qml"
+            --no-translations
+            # The debug CRT is not redistributable and comes with the compiler that just built
+            # this, so it is already resolvable wherever a build happened.
+            --no-compiler-runtime
+            "$<TARGET_FILE:euclid-amo>"
+            COMMENT "Deploying the Qt runtime beside euclid-amo.exe"
+            VERBATIM)
+endif ()

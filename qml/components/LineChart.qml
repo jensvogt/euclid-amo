@@ -9,7 +9,8 @@ import QtQuick.Controls
 // missing rollup bucket - shows up as a long flat stretch instead of being hidden by even spacing.
 //
 // Interaction: hover for a crosshair reading every series at that moment, click a legend entry to
-// hide that series, drag horizontally to zoom into a time range, double-click to zoom back out.
+// hide that series, drag horizontally to zoom into a time range, ctrl+wheel to zoom in and out
+// around the pointer, double-click to zoom back out.
 Item {
     id: root
 
@@ -36,10 +37,14 @@ Item {
     // survives the series list being rebuilt on every refresh.
     property var hiddenSeries: ({})
 
-    // Zoomed-in time window, or NaN for "all of it". Set by dragging, cleared by double-click.
+    // Zoomed-in time window, or NaN for "all of it". Set by dragging or the wheel, cleared by
+    // double-click.
     property real viewTMin: NaN
     property real viewTMax: NaN
     readonly property bool zoomed: !isNaN(root.viewTMin) && !isNaN(root.viewTMax)
+    // The full extent of the data at the moment the window was picked, kept so that a later
+    // refresh can tell whether it is still looking at the same period - see onSeriesChanged.
+    property real zoomBaseSpan: 0
 
     readonly property real rightPad: 4
     readonly property real topPad: 18
@@ -48,8 +53,10 @@ Item {
     readonly property real leftPad: root.plot.series.length > 0 ? Math.max(24, tickMetrics.width + 10) : 4
 
     // Everything the painting and the interactions need, derived once per series/zoom/hide change:
-    // {series: [{name, color, points: [{t, value, timestamp}]}], tMin, tMax, vMin, vMax}, where
-    // tMin/tMax are the *visible* window and vMin/vMax cover only what falls inside it.
+    // {series: [{name, color, points: [{t, value, timestamp}]}], tMin, tMax, vMin, vMax, dataTMin,
+    // dataTMax}, where tMin/tMax are the *visible* window, vMin/vMax cover only what falls inside
+    // it, and dataTMin/dataTMax are the full extent of the data behind it - what zooming is bounded
+    // by, and what tells a refresh of the same period apart from a change of period.
     readonly property var plot: root.buildPlot()
     readonly property var ticks: root.buildTicks()
 
@@ -80,7 +87,7 @@ Item {
     }
 
     function buildPlot() {
-        const result = { series: [], tMin: 0, tMax: 0, vMin: 0, vMax: 0 }
+        const result = { series: [], tMin: 0, tMax: 0, vMin: 0, vMax: 0, dataTMin: 0, dataTMax: 0 }
 
         const nonEmpty = (root.series || []).filter(s => s.points && s.points.length > 0 && !root.isHidden(s.name))
         if (nonEmpty.length === 0)
@@ -111,6 +118,9 @@ Item {
             }
             result.series.push({ name: s.name, color: s.color, points: points })
         }
+
+        result.dataTMin = tMin
+        result.dataTMax = tMax
 
         // Zooming narrows the window; every series keeps all of its points so its line still
         // enters and leaves the window at the edges, and painting clips to the plot area.
@@ -252,14 +262,88 @@ Item {
         root.hiddenSeries = updated
     }
 
+    // The one way a window gets set, so that zoomBaseSpan cannot be left behind by one of the two
+    // gestures that set one.
+    function setZoom(tMin, tMax) {
+        root.zoomBaseSpan = root.plot.dataTMax - root.plot.dataTMin
+        root.viewTMin = tMin
+        root.viewTMax = tMax
+    }
+
     function resetZoom() {
         root.viewTMin = NaN
         root.viewTMax = NaN
+        root.zoomBaseSpan = 0
+    }
+
+    // Narrow or widen the visible window by `factor` (below 1 zooms in), keeping whatever is under
+    // `centerX` pinned to that pixel. Zooming about the pointer rather than about the middle is the
+    // whole point of a wheel zoom: the spike being examined stays where it is and the chart opens
+    // out around it, instead of sliding away as the window closes on its own centre.
+    function zoomBy(factor, centerX) {
+        const plot = root.plot
+        if (plot.series.length === 0)
+            return
+
+        const fullSpan = plot.dataTMax - plot.dataTMin
+        const span = plot.tMax - plot.tMin
+        if (!(fullSpan > 0) || !(span > 0))
+            return
+
+        // 500x in is the floor. Past that the window falls between two samples on any realistic
+        // series, and a chart with no points in it is not a more detailed view of anything.
+        const newSpan = Math.max(fullSpan / 500, Math.min(fullSpan, span * factor))
+
+        // Widened back out to the whole extent: drop the window rather than hold a full-width one,
+        // so the chart follows new data again and the "zoomed" hint takes itself away.
+        if (newSpan >= fullSpan) {
+            root.resetZoom()
+            return
+        }
+
+        const anchorT = root.timeAt(centerX)
+        let tMin = anchorT - (anchorT - plot.tMin) / span * newSpan
+        let tMax = tMin + newSpan
+        // Zooming out near either end would otherwise walk the window off the data. Slide it back
+        // instead of clipping it, so the wheel still delivers the span it was asked for.
+        if (tMin < plot.dataTMin) {
+            tMin = plot.dataTMin
+            tMax = tMin + newSpan
+        }
+        if (tMax > plot.dataTMax) {
+            tMax = plot.dataTMax
+            tMin = tMax - newSpan
+        }
+
+        root.setZoom(tMin, tMax)
     }
 
     onPlotChanged: root.hover = null
-    // A new period (or new data) invalidates a window picked against the old one.
-    onSeriesChanged: root.resetZoom()
+
+    // A new *period* invalidates a window picked against the old one; a refresh of the same period
+    // does not. This used to reset on any series change at all, which with the wall's refresh timer
+    // meant a window picked by hand survived at most thirty seconds - barely noticeable when
+    // zooming cost a deliberate drag, and unusable once a wheel notch does it.
+    //
+    // The span of the data separates the two cases cleanly: the ranges on offer step by four times
+    // or more (15m, 1h, 6h, 24h, 7d, 30d), while re-asking for the same one moves the extent by a
+    // sample or two. So anything that halves or doubles the span is a new period, and anything
+    // short of that is the same period with fresher data - where the window still means what the
+    // user meant by it, and buildPlot() clamps it to whatever actually arrived.
+    // buildPlot() rather than the `plot` property: this handler runs before that binding has been
+    // re-evaluated, so reading it here describes the data that has just been replaced - which made
+    // every period change look like a refresh of the same period and kept a window that no longer
+    // meant anything.
+    onSeriesChanged: {
+        if (!root.zoomed)
+            return
+        const fresh = root.buildPlot()
+        const span = fresh.dataTMax - fresh.dataTMin
+        if (!(span > 0) || !(root.zoomBaseSpan > 0) || span < root.zoomBaseSpan / 2 || span > root.zoomBaseSpan * 2)
+            root.resetZoom()
+        else
+            root.zoomBaseSpan = span
+    }
 
     // Sizes the y-axis gutter. Measuring the widest label beats a fixed width, which would either
     // clip six-figure counts or waste space on two-digit ones.
@@ -695,10 +779,22 @@ Item {
                     root.updateHover(mouse.x)
                     return
                 }
-                const a = root.timeAt(Math.min(from, mouse.x))
-                const b = root.timeAt(Math.max(from, mouse.x))
-                root.viewTMin = a
-                root.viewTMax = b
+                root.setZoom(root.timeAt(Math.min(from, mouse.x)), root.timeAt(Math.max(from, mouse.x)))
+            }
+
+            // Ctrl+wheel only - Cmd on macOS, which Qt folds into ControlModifier anyway. A bare
+            // wheel is left unaccepted and travels on to the Flickable the wall scrolls in; without
+            // that gate every panel would be a hole the page cannot be scrolled over, and a wall is
+            // mostly panel. It is the same bargain maps and editors strike for the same reason.
+            onWheel: (wheel) => {
+                if (!(wheel.modifiers & Qt.ControlModifier)) {
+                    wheel.accepted = false
+                    return
+                }
+                // angleDelta is in eighths of a degree, 120 to a mouse notch. Used as an exponent
+                // rather than counted in notches so that a trackpad's stream of small deltas and a
+                // mouse's few large ones cover the same zoom for the same amount of scrolling.
+                root.zoomBy(Math.pow(1 / 1.25, wheel.angleDelta.y / 120), wheel.x)
             }
             onCanceled: {
                 dragFrom = NaN
@@ -719,11 +815,14 @@ Item {
             height: canvas.height - root.topPad - root.bottomPad
         }
 
+        // Doubles as the only advertisement ctrl+wheel gets: a modifier gesture nobody is told
+        // about is a gesture nobody uses. Shown on hover rather than always, so a wall being read
+        // from across the room carries no instructions nobody is close enough to act on.
         Text {
-            visible: root.zoomed && !hoverArea.dragging
+            visible: !hoverArea.dragging && (root.zoomed || hoverArea.containsMouse)
             anchors.horizontalCenter: parent.horizontalCenter
             y: canvas.height - root.bottomPad + 4
-            text: "zoomed · double-click to reset"
+            text: root.zoomed ? "zoomed · double-click to reset" : "ctrl+wheel or drag to zoom"
             color: "#6b7280"
             font.pixelSize: 10
         }

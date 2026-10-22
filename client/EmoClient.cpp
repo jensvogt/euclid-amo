@@ -257,3 +257,61 @@ void EmoClient::fetchCatalog(const int limit) {
              });
     }
 }
+
+// ── Saved dashboards ─────────────────────────────────────────────────────────
+//
+// Thin by design: EMO owns what a dashboard is keyed by and who it belongs to, so there is nothing
+// to decide on this side beyond turning a QVariantMap into JSON and back. In particular none of
+// these sends a user id - see EmoClient.h.
+
+void EmoClient::saveDashboard(const QString &name, const QVariantMap &dashboard) {
+
+    QJsonObject body;
+    body["name"] = name;
+    body["dashboard"] = QJsonObject::fromVariantMap(dashboard);
+
+    m_base->post("emo", "save-dashboard", body, true,
+         [this, name](const QJsonObject &) {
+             emit dashboardSaved(name);
+         },
+         [this, name](const QString &message) {
+             emit dashboardSaveFailed(name, message);
+         });
+}
+
+void EmoClient::loadDashboard(const QString &name) {
+
+    QJsonObject body;
+    body["name"] = name;
+
+    m_base->post("emo", "get-dashboard", body, true,
+         [this, name](const QJsonObject &response) {
+             const auto layout = response.value("dashboard").toObject();
+             // An answer with no layout in it is a failure rather than an empty dashboard: opening
+             // it would replace the wall on screen with nothing, which is indistinguishable from
+             // having deleted it.
+             if (layout.isEmpty()) {
+                 emit dashboardLoadFailed(name, QStringLiteral("The server returned no layout for \"%1\".").arg(name));
+                 return;
+             }
+             emit dashboardLoaded(name, layout.toVariantMap());
+         },
+         [this, name](const QString &message) {
+             emit dashboardLoadFailed(name, message);
+         });
+}
+
+void EmoClient::listDashboards() {
+
+    m_base->post("emo", "list-dashboards", QJsonObject{}, true,
+         [this](const QJsonObject &response) {
+             QVariantList items;
+             for (const auto &item: response.value("items").toArray()) {
+                 items.append(item.toObject().toVariantMap());
+             }
+             emit dashboardsListed(items);
+         },
+         [this](const QString &message) {
+             emit dashboardsListFailed(message);
+         });
+}
