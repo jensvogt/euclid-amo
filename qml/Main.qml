@@ -62,12 +62,76 @@ ApplicationWindow {
         window.refresh()
     }
 
+    // Returns whether the write landed, for the one caller that has something to say when it did.
     function persist() {
         // Saved on every change rather than behind a button. A wall is edited by dragging things
         // around, and a drag that has to be confirmed afterwards is a drag somebody will lose.
         if (!dashboardStore.save(window.dashboard.name, window.dashboard)) {
             window.showNotice(dashboardStore.lastError())
+            return false
         }
+        return true
+    }
+
+    // File > Save, and Ctrl+S.
+    //
+    // Not the only way the dashboard reaches disk - persist() above has already written it on
+    // every change - so this is a deliberate re-save rather than the thing that makes edits
+    // durable. What it is for is the case where a write failed: a full disk, a directory gone
+    // read-only, a file locked by something else. persist() says so and then the window is
+    // carrying changes that are not on disk, and this is how somebody acts on that once the cause
+    // is fixed, without having to invent an edit to trigger another save.
+    //
+    // It therefore confirms out loud. A save that reports nothing is indistinguishable from a
+    // menu item that does nothing, which for the one case this exists to serve is the whole point.
+    function saveDashboard() {
+        if (window.persist())
+            window.showNotice("Saved \"" + window.dashboard.name + "\".")
+    }
+
+    // ── Dashboards in EMO ────────────────────────────────────────────────────
+    //
+    // The same layout, kept on the server under the signed-in user id, so that a wall built on one
+    // machine can be opened on another. Alongside the local files rather than instead of them:
+    // persist() still writes every edit to $HOME as it happens, and nothing below runs unless
+    // somebody chooses it from the File menu. That keeps the wall working signed out, and keeps a
+    // gateway that is down from being able to cost anybody their dashboard.
+    //
+    // Neither call names a user. EMO takes the owner from the authenticated subject of the
+    // request, which is the only reason this is safe to offer to every user rather than only to
+    // administrators - there is nothing here that could ask for somebody else's.
+
+    function saveDashboardToServer() {
+        if (!window.loggedIn) {
+            window.showNotice("Sign in to save to EMO.")
+            return
+        }
+        emoClient.saveDashboard(window.dashboard.name, window.dashboard)
+    }
+
+    function openDashboardFromServer() {
+        if (!window.loggedIn) {
+            window.showNotice("Sign in to open from EMO.")
+            return
+        }
+        serverDashboardDialog.userId = window.currentUser
+        serverDashboardDialog.beginLoading()
+        emoClient.listDashboards()
+    }
+
+    // A dashboard that arrived from the server is written to disk straight away, so that the
+    // machine it was opened on now has it the same way every other dashboard is had. Without that,
+    // the next edit would persist() it anyway - and a half-adopted dashboard, on screen but not in
+    // the list the top bar offers, is a confusing thing to leave somebody with.
+    function adoptDashboard(name, loaded) {
+        const dashboard = Object.assign({}, loaded, {name: name})
+        if (!dashboardStore.save(name, dashboard)) {
+            window.showNotice(dashboardStore.lastError())
+            return
+        }
+        window.dashboard = dashboard
+        window.panelData = ({})
+        window.refresh()
     }
 
     // Every edit to the dashboard goes through here, and here hands back a new object rather than
@@ -304,6 +368,31 @@ ApplicationWindow {
             window.catalog = metrics
         }
 
+        function onDashboardSaved(name) {
+            window.showNotice("Saved \"" + name + "\" to EMO as " + window.currentUser + ".")
+        }
+
+        function onDashboardSaveFailed(name, message) {
+            window.showNotice("Could not save \"" + name + "\" to EMO: " + message)
+        }
+
+        function onDashboardsListed(items) {
+            serverDashboardDialog.showItems(items)
+        }
+
+        function onDashboardsListFailed(message) {
+            serverDashboardDialog.showError(message)
+        }
+
+        function onDashboardLoaded(name, dashboard) {
+            window.adoptDashboard(name, dashboard)
+            window.showNotice("Opened \"" + name + "\" from EMO.")
+        }
+
+        function onDashboardLoadFailed(name, message) {
+            window.showNotice("Could not open \"" + name + "\" from EMO: " + message)
+        }
+
         function onCatalogFailed(message) {
             // Not shown as a panel error: the catalog only feeds the editor's pickers, and a metric
             // name can be typed. Said once, quietly.
@@ -335,7 +424,30 @@ ApplicationWindow {
         onActivated: window.refresh()
     }
 
+    // The menu's own accelerator, declared here beside the other one rather than on the item, so
+    // that Ctrl+S works whether or not the menu has ever been opened.
+    Shortcut {
+        sequences: [StandardKey.Save]
+        onActivated: window.saveDashboard()
+    }
+
+    Shortcut {
+        sequences: ["Ctrl+Shift+S"]
+        onActivated: window.saveDashboardToServer()
+    }
+
     // ── Layout ───────────────────────────────────────────────────────────────
+
+    // ApplicationWindow lays this out above contentItem by itself, so everything anchored to
+    // parent.top below starts under it and no other geometry here has to change.
+    menuBar: MainMenu {
+        signedIn: window.loggedIn
+        userId: window.currentUser
+        onSaveRequested: window.saveDashboard()
+        onSaveToServerRequested: window.saveDashboardToServer()
+        onOpenFromServerRequested: window.openDashboardFromServer()
+        onExitRequested: Qt.quit()
+    }
 
     TimeRangeBar {
         id: topBar
@@ -539,6 +651,11 @@ ApplicationWindow {
 
         onDashboardSaved: (name, range) => window.applyDashboardSettings(name, range)
         onDashboardRemoved: (name) => window.removeDashboard(name)
+    }
+
+    ServerDashboardDialog {
+        id: serverDashboardDialog
+        onDashboardChosen: (name) => emoClient.loadDashboard(name)
     }
 
     AboutDialog { id: aboutDialog }

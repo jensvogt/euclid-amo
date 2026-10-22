@@ -59,7 +59,39 @@ public:
     // picker populated from the other.
     Q_INVOKABLE void fetchCatalog(int limit = 2000);
 
+    // ── Saved dashboards ─────────────────────────────────────────────────────
+    //
+    // A layout stored in EMO rather than in a file under $HOME, so that the same wall can be
+    // opened on whatever machine somebody signs in from. It is the local store's companion, not
+    // its replacement: DashboardStore still writes every edit as it happens, and these three are
+    // only reached deliberately, from the File menu.
+    //
+    // None of them names a user. The owner is whoever the session is authenticated as, decided by
+    // EMO from the request's own subject - so there is no way from here to read or overwrite
+    // somebody else's dashboards, and nothing to get wrong by passing the wrong id.
+
+    // Writes `dashboard` under `name`, replacing whatever this user had stored under that name.
+    Q_INVOKABLE void saveDashboard(const QString &name, const QVariantMap &dashboard);
+
+    // Reads one back. Answers with dashboardLoaded(), or dashboardLoadFailed() when this user has
+    // nothing stored under that name.
+    Q_INVOKABLE void loadDashboard(const QString &name);
+
+    // What this user has stored, for a chooser to offer. Names and times only - the layouts stay
+    // on the server until one is actually opened.
+    Q_INVOKABLE void listDashboards();
+
 signals:
+    void dashboardSaved(const QString &name);
+    void dashboardSaveFailed(const QString &name, const QString &message);
+
+    void dashboardLoaded(const QString &name, const QVariantMap &dashboard);
+    void dashboardLoadFailed(const QString &name, const QString &message);
+
+    // [{name, created, modified}], most recently modified first.
+    void dashboardsListed(const QVariantList &items);
+    void dashboardsListFailed(const QString &message);
+
     // `series` is [{name, points: [{timestamp, value, maxValue}]}], oldest first so a chart can
     // draw it left to right. The four figures are over everything that matched, for the panels that
     // show one number rather than a line.

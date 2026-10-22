@@ -19,7 +19,23 @@
     <InstallerApplicationIcon>euclid-amo</InstallerApplicationIcon>
     <InstallerWindowIcon>euclid-amo.png</InstallerWindowIcon>
     <StartMenuDir>euclid</StartMenuDir>
-    <TargetDir>@ApplicationsDir@/euclid</TargetDir>
+    <!--
+        C:\Program Files\euclid-amo.
+
+        @ApplicationsDirX64@ rather than the literal path: it is the same directory on a stock
+        machine, but stays correct where Program Files is not on C: or is localized. And rather
+        than plain @ApplicationsDir@, which it used to be, because @ApplicationsDir@ resolves per
+        the *installer's* bitness - and the installerbase in tools_ifw is a 32-bit binary, so
+        WOW64 redirection silently landed it in "C:\Program Files (x86)" despite the app itself
+        being x64. The X64 form is fixed regardless of which installerbase carries it.
+
+        Program Files is not writable by a normal user, so installerbase prompts for elevation
+        before copying (its standard authorization fallback - left on, i.e. no
+        DisableAuthorizationFallback here). One consequence worth knowing: once elevated, the
+        shortcuts installscript.qs creates land in the all-users Start menu and on the all-users
+        desktop rather than the installing user's own.
+    -->
+    <TargetDir>@ApplicationsDirX64@/euclid-amo</TargetDir>
     <RemoteRepositories>
         <Repository>
             <Url>https://jensvogt.github.io/euclid-amo</Url>
