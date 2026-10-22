@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.12](https://github.com/jensvogt/euclid-amo/compare/1.0.11...v1.0.12) (2026-10-22)
+
+
+### Bug Fixes
+
+* main menu ([84ed564](https://github.com/jensvogt/euclid-amo/commit/84ed56410786d888f573dcfb2e3a21131074585f))
+* main menu ([4639dab](https://github.com/jensvogt/euclid-amo/commit/4639daba0f9f5ffe1b9d9a83b95022bda156b112))
+
 ## [1.0.11](https://github.com/jensvogt/euclid-amo/compare/1.0.10...v1.0.11) (2026-10-17)
 
 
