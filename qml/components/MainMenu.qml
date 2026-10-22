@@ -45,8 +45,8 @@ MenuBar {
         property string accelerator: ""
 
         implicitHeight: 30
-        // Wide enough for the longest row, which is "Save to EMO as <user>" beside its
-        // accelerator; Menu sizes itself to the widest item it holds.
+        // Wide enough for the longest row beside its accelerator; Menu sizes itself to the widest
+        // item it holds.
         implicitWidth: 300
 
         contentItem: Item {
@@ -117,10 +117,9 @@ MenuBar {
         }
 
         FileItem {
-            // Names the user it will save under, because that is the whole of what distinguishes
-            // this from the entry above it - the same layout, somewhere a different machine can
-            // reach, under whoever is signed in.
-            text: "Save to EMO"
+            // Opens a dialog rather than saving straight away, which is what the ellipsis says:
+            // what goes to EMO is a named set of dashboards, and which ones is a question.
+            text: "Save to EMO…"
             accelerator: "Ctrl+Shift+S"
             enabled: root.signedIn
             onTriggered: root.saveToServerRequested()

@@ -101,12 +101,25 @@ ApplicationWindow {
     // request, which is the only reason this is safe to offer to every user rather than only to
     // administrators - there is nothing here that could ask for somebody else's.
 
+    // What is stored under one name is a *configuration*: any number of dashboards, saved and
+    // brought back together. A wall is rarely one dashboard, and one entry per dashboard would
+    // mean opening six of them on the new machine one at a time.
+    readonly property string configurationKind: "euclid-amo/configuration"
+
+    // Which of the two dialogs asked for the list of saved configurations. Both need it - one to
+    // choose from, the other to say when a name would replace something - and there is one signal
+    // for the answer.
+    property string listingFor: ""
+    property int lastSavedCount: 0
+
     function saveDashboardToServer() {
         if (!window.loggedIn) {
             window.showNotice("Sign in to save to EMO.")
             return
         }
-        emoClient.saveDashboard(window.dashboard.name, window.dashboard)
+        serverSaveDialog.beginFor(dashboardStore.names, window.dashboard.name || "")
+        window.listingFor = "save"
+        emoClient.listDashboards()
     }
 
     function openDashboardFromServer() {
@@ -115,23 +128,86 @@ ApplicationWindow {
             return
         }
         serverDashboardDialog.userId = window.currentUser
+        serverDashboardDialog.localNames = dashboardStore.names
         serverDashboardDialog.beginLoading()
+        window.listingFor = "load"
         emoClient.listDashboards()
     }
 
-    // A dashboard that arrived from the server is written to disk straight away, so that the
-    // machine it was opened on now has it the same way every other dashboard is had. Without that,
-    // the next edit would persist() it anyway - and a half-adopted dashboard, on screen but not in
-    // the list the top bar offers, is a confusing thing to leave somebody with.
-    function adoptDashboard(name, loaded) {
-        const dashboard = Object.assign({}, loaded, {name: name})
-        if (!dashboardStore.save(name, dashboard)) {
-            window.showNotice(dashboardStore.lastError())
-            return
+    // The chosen dashboards, as a document EMO stores under one name.
+    //
+    // The one on screen is taken from the window rather than from disk. persist() has already
+    // written every edit, so the two agree - but the window is the one that is certainly current,
+    // and a save that quietly stored the older of two copies would be the worst kind of wrong.
+    function saveConfigurationToServer(name, dashboardNames) {
+        const dashboards = []
+        for (const dashboardName of dashboardNames) {
+            const loaded = dashboardName === window.dashboard.name
+                         ? window.dashboard
+                         : dashboardStore.load(dashboardName)
+            if (Object.keys(loaded).length === 0) {
+                window.showNotice("Could not read \"" + dashboardName + "\" - nothing was saved.")
+                return
+            }
+            dashboards.push(Object.assign({}, loaded, {name: dashboardName}))
         }
-        window.dashboard = dashboard
+
+        // For the notice when the answer comes back: the signal carries the name it saved under,
+        // and "6 dashboards" is the part worth confirming.
+        window.lastSavedCount = dashboards.length
+        emoClient.saveDashboard(name, {
+            kind: window.configurationKind,
+            version: 1,
+            saved: new Date().toISOString(),
+            dashboards: dashboards
+        })
+    }
+
+    // What a stored document holds, as a list of dashboards.
+    //
+    // Documents saved before configurations existed are a single dashboard, stored flat - so one
+    // without a "dashboards" array is that, under the name the entry itself carries. Those are
+    // still out there in EMO, and refusing to read them would be this application breaking its own
+    // saved work.
+    function dashboardsIn(name, document) {
+        const held = document.dashboards
+        if (held && held.length !== undefined) {
+            const dashboards = []
+            for (const dashboard of held) {
+                // A dashboard with no name of its own cannot be written to disk, and is not worth
+                // guessing a name for: it is skipped and counted, not silently renamed.
+                if (dashboard && dashboard.name) dashboards.push(dashboard)
+            }
+            return dashboards
+        }
+        return [Object.assign({}, document, {name: name})]
+    }
+
+    // Dashboards that arrived from the server are written to disk straight away, so that the
+    // machine they were opened on now has them the same way every other dashboard is had. Without
+    // that, the next edit would persist() them anyway - and a half-adopted dashboard, on screen but
+    // not in the list the top bar offers, is a confusing thing to leave somebody with.
+    function adoptDashboards(configuration, dashboards) {
+        const written = []
+        for (const dashboard of dashboards) {
+            if (!dashboardStore.save(dashboard.name, dashboard)) {
+                window.showNotice(dashboardStore.lastError())
+                return
+            }
+            written.push(dashboard.name)
+        }
+        if (written.length === 0) return
+
+        // Onto the first of them, which for a configuration saved from this application is the one
+        // whose owner was looking at it when they saved.
+        window.dashboard = Object.assign({}, dashboards[0])
         window.panelData = ({})
         window.refresh()
+
+        window.showNotice(written.length === 1
+                          ? "Loaded \"" + written[0] + "\" from \"" + configuration + "\"."
+                          : "Loaded " + written.length + " dashboards from \"" + configuration + "\": "
+                            + written.join(", ") + ".")
     }
 
     // Every edit to the dashboard goes through here, and here hands back a new object rather than
@@ -369,7 +445,9 @@ ApplicationWindow {
         }
 
         function onDashboardSaved(name) {
-            window.showNotice("Saved \"" + name + "\" to EMO as " + window.currentUser + ".")
+            const count = window.lastSavedCount
+            window.showNotice("Saved \"" + name + "\" to EMO as " + window.currentUser
+                              + " (" + count + (count === 1 ? " dashboard" : " dashboards") + ").")
         }
 
         function onDashboardSaveFailed(name, message) {
@@ -377,20 +455,24 @@ ApplicationWindow {
         }
 
         function onDashboardsListed(items) {
-            serverDashboardDialog.showItems(items)
+            if (window.listingFor === "save") serverSaveDialog.showItems(items)
+            else serverDashboardDialog.showItems(items)
         }
 
         function onDashboardsListFailed(message) {
-            serverDashboardDialog.showError(message)
+            if (window.listingFor === "save") serverSaveDialog.showError(message)
+            else serverDashboardDialog.showError(message)
         }
 
-        function onDashboardLoaded(name, dashboard) {
-            window.adoptDashboard(name, dashboard)
-            window.showNotice("Opened \"" + name + "\" from EMO.")
+        // One stored document, read because somebody selected it in the load dialog - so it goes
+        // back to the dialog to be shown rather than onto the screen. Nothing is adopted until the
+        // dashboards inside it have been chosen.
+        function onDashboardLoaded(name, document) {
+            serverDashboardDialog.showContents(name, window.dashboardsIn(name, document))
         }
 
         function onDashboardLoadFailed(name, message) {
-            window.showNotice("Could not open \"" + name + "\" from EMO: " + message)
+            serverDashboardDialog.showContentsError(name, message)
         }
 
         function onCatalogFailed(message) {
@@ -655,7 +737,13 @@ ApplicationWindow {
 
     ServerDashboardDialog {
         id: serverDashboardDialog
-        onDashboardChosen: (name) => emoClient.loadDashboard(name)
+        onContentsRequested: (name) => emoClient.loadDashboard(name)
+        onLoadRequested: (name, dashboards) => window.adoptDashboards(name, dashboards)
+    }
+
+    ServerSaveDialog {
+        id: serverSaveDialog
+        onSaveRequested: (name, dashboardNames) => window.saveConfigurationToServer(name, dashboardNames)
     }
 
     AboutDialog { id: aboutDialog }
