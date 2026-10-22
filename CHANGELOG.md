@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.13](https://github.com/jensvogt/euclid-amo/compare/1.0.12...v1.0.13) (2026-10-22)
+
+
+### Bug Fixes
+
+* new save to EMO dialog ([63cad84](https://github.com/jensvogt/euclid-amo/commit/63cad84a359b23739d478f0d57503a44564a554f))
+* new save to EMO dialog ([c606993](https://github.com/jensvogt/euclid-amo/commit/c60699339227744217350e9357e2d6c70c5b1472))
+
 ## [1.0.12](https://github.com/jensvogt/euclid-amo/compare/1.0.11...v1.0.12) (2026-10-22)
 
 
