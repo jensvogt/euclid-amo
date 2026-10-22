@@ -33,6 +33,23 @@ dimension. Both come from EMO's label map, so a metric an application pushed wit
 A file per dashboard, for the reason Grafana keeps them apart too: a dashboard is edited, broken,
 copied to another machine and put in a repository, and all four are file operations.
 
+## Dashboards kept in EMO
+
+**File ▸ Save to EMO…** stores a *configuration*: a name, and any number of the dashboards on this
+machine saved together — with one box that takes all of them. **File ▸ Load from EMO…** lists what
+is stored, shows what is inside the one selected, and brings back whichever of those are ticked.
+A wall is rarely one dashboard, and one entry per dashboard would mean opening six of them on the
+new machine one at a time.
+
+Neither call names a user: EMO takes the owner from the authenticated subject of the request, so
+there is nothing here that could read or overwrite somebody else's. This is the companion of the
+local files, not their replacement — every edit is still written to `~/.euclid/amo/dashboards` as
+it happens, so the wall works signed out and a gateway that is down cannot cost anybody a
+dashboard. A dashboard loaded back is written there too, and replaces one of the same name.
+
+Entries saved before configurations existed hold a single dashboard, stored flat. They still load,
+under the name the entry itself carries.
+
 ## Panel types
 
 | type | what it answers | notes |

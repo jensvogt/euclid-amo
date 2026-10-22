@@ -93,6 +93,8 @@ qt_add_qml_module(euclid-amo
         qml/components/MetricPicker.qml
         qml/components/DashboardDialog.qml
         qml/components/StatusBar.qml
+        qml/components/ServerSaveDialog.qml
+        qml/components/DashboardCheckList.qml
         qml/components/TimeRangeDialog.qml
         qml/components/DateTimePicker.qml
         qml/components/StatusStrip.qml
