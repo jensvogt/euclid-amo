@@ -331,11 +331,18 @@ ApplicationWindow {
         return ""
     }
 
+    // A *copy* with the one panel replaced, rather than the same map reassigned - see
+    // replacePanel(): a "var" property notifies when it is given a different object, and mutating
+    // the one it already holds changes nothing anybody can see.
+    //
+    // This used to get its notification by assigning an empty object first and the real map second,
+    // which worked and cost a zoom. Both assignments notify, so every panel on the wall saw its
+    // data vanish and come back on each state change - and a line chart reading an empty series
+    // takes that for a change of period and drops a window the user had dragged. One "loading"
+    // flag at the start of a refresh was enough to undo it, which is why zooming looked broken.
     function setPanelState(panelId, state) {
-        const data = window.panelData
+        const data = Object.assign({}, window.panelData)
         data[panelId] = Object.assign({}, data[panelId] || {}, state)
-        // Reassigned, not mutated - see replacePanel().
-        window.panelData = ({})
         window.panelData = data
     }
 

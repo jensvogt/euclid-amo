@@ -31,6 +31,7 @@ public:
     // The dashboard, or an empty map when there is no such file or it cannot be parsed. Reading is
     // deliberately quiet: a dashboard that will not load is reported by the caller as an empty
     // wall, not by this class as an error dialog nobody asked for.
+    [[nodiscard]]
     Q_INVOKABLE QVariantMap load(const QString &name) const;
 
     // Writes it, creating the directory if it is not there. Returns false and says why in
@@ -40,11 +41,13 @@ public:
     Q_INVOKABLE bool remove(const QString &name);
 
     // A dashboard with nothing on it, which is what "New dashboard" starts from.
+    [[nodiscard]]
     Q_INVOKABLE QVariantMap emptyDashboard(const QString &name) const;
 
     // What a first run gets: a wall showing the installation's own vital signs, so that the
     // application has something on it before anybody has configured anything. Built from the
     // metrics EMO records about itself, which are the only ones certain to exist.
+    [[nodiscard]]
     Q_INVOKABLE QVariantMap starterDashboard() const;
 
     [[nodiscard]]
