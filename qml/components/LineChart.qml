@@ -339,7 +339,14 @@ Item {
             return
         const fresh = root.buildPlot()
         const span = fresh.dataTMax - fresh.dataTMin
-        if (!(span > 0) || !(root.zoomBaseSpan > 0) || span < root.zoomBaseSpan / 2 || span > root.zoomBaseSpan * 2)
+        // Nothing to measure is not a new period: an empty series is a panel between states - a
+        // refresh in flight, an error, a wall handing its charts a fresh data map - and the window
+        // still means what it meant a moment ago. Resetting on one of those is how a zoom used to
+        // disappear on the next refresh tick, which made dragging one look as if it had done
+        // nothing at all.
+        if (!(span > 0))
+            return
+        if (!(root.zoomBaseSpan > 0) || span < root.zoomBaseSpan / 2 || span > root.zoomBaseSpan * 2)
             root.resetZoom()
         else
             root.zoomBaseSpan = span
@@ -753,29 +760,87 @@ Item {
             // Drag start, in pixels; NaN while not dragging.
             property real dragFrom: NaN
             property real dragTo: NaN
-            readonly property bool dragging: !isNaN(dragFrom) && !isNaN(dragTo)
+            property real pressY: NaN
+            readonly property bool dragging: hoverArea.gesture === hoverArea.zoomGesture
+                                             && !isNaN(dragFrom) && !isNaN(dragTo)
             // Below this the drag was really a click, and zooming into a few pixels of chart would
             // just strand the user in an empty window.
             readonly property int minimumDragPixels: 8
 
+            // Whose gesture this is. The wall is a Flickable, and a chart that simply takes every
+            // drag would make every panel a hole the wall cannot be scrolled in - while a chart
+            // that never takes one cannot be zoomed at all, because the Flickable pulls the grab
+            // away as soon as the pointer wanders a few pixels off the horizontal.
+            //
+            // So the first few pixels decide, the way they do in a map: whichever axis moves more
+            // names the gesture. Sideways is a zoom and the chart keeps the grab; downwards is a
+            // scroll and the chart lets go, leaving the Flickable to take it from the press it
+            // already saw.
+            readonly property int undecided: 0
+            readonly property int zoomGesture: 1
+            readonly property int scrollGesture: -1
+            property int gesture: hoverArea.undecided
+            // Below Qt's own startDragDistance (10px), so the question is settled before the
+            // Flickable starts asking it.
+            readonly property int gestureThreshold: 4
+
             onPositionChanged: (mouse) => {
+                if (gesture === scrollGesture)
+                    return
                 if (isNaN(dragFrom)) {
                     root.updateHover(mouse.x)
-                } else {
-                    dragTo = mouse.x
-                    root.hover = null
+                    return
                 }
+
+                if (gesture === undecided) {
+                    const dx = Math.abs(mouse.x - dragFrom)
+                    const dy = Math.abs(mouse.y - pressY)
+                    // Still inside the dead zone: nothing has been said yet either way.
+                    if (Math.max(dx, dy) < gestureThreshold)
+                        return
+                    if (dx >= dy) {
+                        // Ours. Claiming it here is what keeps the wall from taking it: a
+                        // Flickable deliberately does not steal on the move that first crosses its
+                        // own threshold, only on the one after - and not at all if the child has
+                        // taken the grab in between, which this does.
+                        gesture = zoomGesture
+                        preventStealing = true
+                    } else {
+                        // Theirs. Nothing to hand over, because nothing was claimed: the wall
+                        // recorded the press when it passed through and scrolls from the next
+                        // move. The drag state goes, so no selection band is drawn over a wall
+                        // that is scrolling.
+                        gesture = scrollGesture
+                        dragFrom = NaN
+                        dragTo = NaN
+                        return
+                    }
+                }
+
+                dragTo = mouse.x
+                root.hover = null
             }
             onPressed: (mouse) => {
                 dragFrom = mouse.x
                 dragTo = mouse.x
+                pressY = mouse.y
+                gesture = undecided
+                // Emphatically *not* claimed here. A Flickable filters the press on its way to
+                // this handler and skips it entirely when the child already keeps the grab - and
+                // having missed the press it then ignores every move of that gesture. Claiming up
+                // front therefore does not win the drag for the chart, it only leaves a vertical
+                // drag doing nothing at all: no zoom, and a wall that will not scroll.
+                preventStealing = false
                 root.hover = null
             }
             onReleased: (mouse) => {
                 const from = dragFrom
+                const owned = gesture === zoomGesture
                 dragFrom = NaN
                 dragTo = NaN
-                if (isNaN(from) || Math.abs(mouse.x - from) < minimumDragPixels) {
+                gesture = undecided
+                preventStealing = false
+                if (isNaN(from) || !owned || Math.abs(mouse.x - from) < minimumDragPixels) {
                     root.updateHover(mouse.x)
                     return
                 }
@@ -799,6 +864,8 @@ Item {
             onCanceled: {
                 dragFrom = NaN
                 dragTo = NaN
+                gesture = undecided
+                preventStealing = false
             }
             onDoubleClicked: root.resetZoom()
             onExited: root.hover = null
