@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.14](https://github.com/jensvogt/euclid-amo/compare/1.0.13...v1.0.14) (2026-10-24)
+
+
+### Bug Fixes
+
+* mouse selection for zoom ([97b9a8d](https://github.com/jensvogt/euclid-amo/commit/97b9a8d778bf11924460b794eb061fb1da703009))
+* mouse selection for zoom ([e803209](https://github.com/jensvogt/euclid-amo/commit/e803209ebc7d9ecf4cc1f0430901b11c30b31658))
+
 ## [1.0.13](https://github.com/jensvogt/euclid-amo/compare/1.0.12...v1.0.13) (2026-10-22)
 
 
