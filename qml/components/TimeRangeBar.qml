@@ -74,6 +74,45 @@ Item {
         return resolution
     }
 
+    // What one point of each tier actually is. This is the part of a range that is not on the
+    // button: 30d draws a point per day, so a spike that lasted an afternoon is not on that chart
+    // at all - it is inside one of its points, averaged away with the rest of the day.
+    readonly property var tierSeconds: ({"RAW": 300, "HOUR": 3600, "DAY": 86400})
+
+    function bucketWords(resolution) {
+        switch (resolution) {
+        case "RAW": return "5-minute averages"
+        case "HOUR": return "hourly averages"
+        case "DAY": return "daily averages"
+        }
+        return resolution
+    }
+
+    // "5-minute averages · 72 points", the second half being what the first means for this
+    // particular window - the figure that says whether a line will show detail or a trend.
+    function tierWords(seconds, resolution) {
+        const bucket = root.tierSeconds[resolution] || 0
+        if (!(bucket > 0) || !(seconds > 0)) return root.bucketWords(resolution)
+        return root.bucketWords(resolution) + "  ·  " + Math.max(1, Math.round(seconds / bucket)) + " points"
+    }
+
+    // The span in words rather than in the button's shorthand: a tooltip is read, not scanned.
+    function spanWords(seconds) {
+        if (seconds >= 86400 && seconds % 86400 === 0) {
+            const days = seconds / 86400
+            return days === 1 ? "The last 24 hours" : "The last " + days + " days"
+        }
+        if (seconds >= 3600 && seconds % 3600 === 0) {
+            const hours = seconds / 3600
+            return hours === 1 ? "The last hour" : "The last " + hours + " hours"
+        }
+        return "The last " + Math.max(1, Math.round(seconds / 60)) + " minutes"
+    }
+
+    function rangeTip(entry) {
+        return root.spanWords(entry.seconds) + "\n" + root.tierWords(entry.seconds, entry.resolution)
+    }
+
     // Short enough for a button: "45m", "6h", "3d".
     function formatSpan(seconds) {
         if (seconds >= 86400) return Math.round(seconds / 86400) + "d"
@@ -234,6 +273,13 @@ Item {
                         font.pixelSize: 11
                     }
 
+                    // What the button is short for, and what a point on the chart will be: "6h"
+                    // says nothing about whether the line is drawn from five-minute readings or
+                    // from daily ones, and that is the difference between seeing a spike and not.
+                    ToolTip.visible: rangeArea.containsMouse
+                    ToolTip.text: root.rangeTip(rangeButton.modelData)
+                    ToolTip.delay: 400
+
                     MouseArea {
                         id: rangeArea
                         anchors.fill: parent
@@ -268,8 +314,13 @@ Item {
                 }
 
                 ToolTip.visible: customArea.containsMouse
+                // The same two lines the range buttons carry, over the window somebody typed: a
+                // custom span lands on a tier exactly as a button does, and which one is not
+                // obvious from two dates.
                 ToolTip.text: customButton.active
                               ? root.formatInstant(root.customFrom) + "  →  " + root.formatInstant(root.customTo)
+                                + "\n" + root.tierWords(root.customSpanSeconds,
+                                                        root.resolutionForSeconds(root.customSpanSeconds))
                               : "Pick a start and an end"
                 ToolTip.delay: 400
 

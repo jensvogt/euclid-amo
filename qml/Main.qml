@@ -384,7 +384,7 @@ ApplicationWindow {
         window.height = opened.height
 
         if (cliUser.length > 0 && cliPassword.length > 0)
-            loginDialog.autoLogin(cliUser, cliPassword, cliNamespace)
+            loginDialog.autoLogin(cliUser, cliPassword, cliNamespace, cliAccount)
         else
             loginDialog.open()
     }
