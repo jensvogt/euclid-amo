@@ -28,9 +28,14 @@ int main(int argc, char *argv[]) {
     // A wall on a screen nobody sits at is the point of this application, and a wall that has to be
     // clicked onto the right dashboard after every restart is not one.
     const QCommandLineOption dashboardOption(QStringList{"dashboard", "d"}, "Dashboard to open on start.", "dashboard");
+    // The counterpart to --namespace, for a user who may work in more than one account: without it
+    // a session starts in the account the user was registered in, which is what every session did
+    // before an account could be chosen at all.
+    const QCommandLineOption accountOption(QStringList{"account", "a"}, "Account to work in after signing in; defaults to your home account.", "account");
     parser.addOption(userOption);
     parser.addOption(passwordOption);
     parser.addOption(namespaceOption);
+    parser.addOption(accountOption);
     parser.addOption(dashboardOption);
     parser.process(app);
 
@@ -84,6 +89,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("cliUser", parser.value(userOption));
     engine.rootContext()->setContextProperty("cliPassword", parser.value(passwordOption));
     engine.rootContext()->setContextProperty("cliNamespace", parser.value(namespaceOption));
+    engine.rootContext()->setContextProperty("cliAccount", parser.value(accountOption));
     engine.rootContext()->setContextProperty("cliDashboard", parser.value(dashboardOption));
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,

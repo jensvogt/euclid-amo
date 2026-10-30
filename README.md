@@ -158,6 +158,7 @@ Override the Qt location with `-DCMAKE_PREFIX_PATH=/path/to/qt`.
 --user, -u        sign in without the dialog
 --password, -p
 --namespace, -n
+--account, -a     account to work in; defaults to your home account
 --dashboard, -d   dashboard to open on start
 ```
 
