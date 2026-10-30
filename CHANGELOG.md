@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.15](https://github.com/jensvogt/euclid-amo/compare/1.0.14...v1.0.15) (2026-10-30)
+
+
+### Bug Fixes
+
+* login dialog ([97c56fd](https://github.com/jensvogt/euclid-amo/commit/97c56fdca08ed1a4984a4bc606bb904f8ec40c8e))
+
 ## [1.0.14](https://github.com/jensvogt/euclid-amo/compare/1.0.13...v1.0.14) (2026-10-24)
 
 
