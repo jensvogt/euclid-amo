@@ -75,6 +75,7 @@ Dialog {
         root.panel = existing ? JSON.parse(JSON.stringify(existing)) : ({})
         root.isNew = creating === true
         titleField.text = root.panel.title || ""
+        descriptionField.text = root.panel.description || ""
         metricField.text = root.panel.metric || ""
         typeBox.currentIndex = Math.max(0, typeBox.model.indexOf(root.panel.type || "line"))
         unitBox.currentIndex = Math.max(0, unitBox.model.indexOf(root.panel.unit || ""))
@@ -123,7 +124,18 @@ Dialog {
         onMetricChosen: (name) => metricField.text = name
     }
 
-    contentItem: Column {
+    // Never taller than the window it is centred in. The form is long - a metric, eight settings,
+    // a filter and a description - and on a laptop screen the bottom of a dialog sized to its
+    // contents is the row with Save on it, which is the one row that has to be reachable.
+    height: Math.min(implicitHeight, (parent ? parent.height : implicitHeight) - 40)
+
+    // A ScrollView only because of that clamp: at full height it has nothing to scroll and behaves
+    // exactly as the plain Column did.
+    contentItem: ScrollView {
+        clip: true
+        contentWidth: availableWidth
+
+        Column {
         width: root.availableWidth
         spacing: 14
 
@@ -396,6 +408,56 @@ Dialog {
             }
         }
 
+        // Across the whole dialog for the same reason the metric is: it is prose, and prose in half
+        // a dialog is two words a line. What goes here is what the panel cannot say for itself -
+        // where the number comes from, what counts as normal, what to do when it is not.
+        Column {
+            width: parent.width
+            spacing: 3
+
+            Text { text: "Description"; color: Theme.textFaint; font.pixelSize: 10 }
+
+            // A TextArea rather than a TextField: a sentence or three, and a field that scrolls
+            // sideways to show the end of one line hides the rest of what somebody wrote.
+            Rectangle {
+                width: parent.width
+                height: 64
+                radius: 6
+                color: Theme.background
+                border.color: descriptionField.activeFocus ? Theme.accent : Theme.border
+                border.width: 1
+
+                ScrollView {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    clip: true
+
+                    TextArea {
+                        id: descriptionField
+                        placeholderText: "What this panel shows, and what to make of it"
+                        color: Theme.text
+                        font.pixelSize: 12
+                        wrapMode: TextEdit.Wrap
+                        selectByMouse: true
+                        Material.theme: Material.Dark
+                        Material.accent: Theme.accent
+                        // Its own frame is drawn above; Material would otherwise put a second
+                        // underline inside this one.
+                        background: null
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: Theme.textFaint
+                font.pixelSize: 10
+                text: "Shown on the panel behind an ⓘ in its header - hover it to read, click to keep it open. "
+                      + "Panels with nothing to say carry no mark."
+            }
+        }
+
         // Why the two dimension pickers are empty, when they are. Without this the answer looks
         // like a broken dialog rather than what it is: EMO stores a label map per row and declares
         // nothing, so a dimension exists here only once something has pushed the metric carrying
@@ -426,7 +488,10 @@ Dialog {
 
         Item {
             width: parent.width
-            height: 36
+            // As tall as the tallest thing in it. A Material button is 52px against the 36 this
+            // row used to claim, so eight pixels of it hung outside the Column - invisible while
+            // the dialog was sized to its contents, and unreachable once it can scroll.
+            height: Math.max(36, saveButton.height)
 
             Text {
                 anchors.left: parent.left
@@ -445,6 +510,7 @@ Dialog {
             }
 
             Button {
+                id: saveButton
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.isNew ? "Add panel" : "Save panel"
@@ -455,6 +521,7 @@ Dialog {
                 onClicked: {
                     const edited = root.panel
                     edited.title = titleField.text.length > 0 ? titleField.text : metricField.text
+                    edited.description = descriptionField.text
                     edited.type = typeBox.currentText
                     edited.metric = metricField.text
                     edited.groupBy = groupByField.editText
@@ -483,6 +550,7 @@ Dialog {
                     root.close()
                 }
             }
+        }
         }
     }
 }

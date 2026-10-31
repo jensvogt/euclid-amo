@@ -8,7 +8,14 @@ import QtQuick
 // knows it is showing bytes says so, and one that does not shows a plain number rather than
 // guessing from a name that happens to end in "-size".
 QtObject {
-    readonly property var units: ["", "%", "bytes", "ms", "s", "/s", "count"]
+    // "%" is for a number already on a 0-100 scale; "ratio" is for one on a 0-1 scale and is
+    // printed as a percentage - Micrometer's process.cpu.usage and every cache hit rate are
+    // fractions, and labelling those "%" understates them a hundredfold.
+    //
+    // "MB" is the same bargain for sizes: euclid reports an application's memory in megabytes, and
+    // "bytes" on one of those reads a million times small. It prints through the same scale as
+    // bytes, so 2,048 of them come out as "2.0 GB" rather than as a five-figure number.
+    readonly property var units: ["", "%", "ratio", "bytes", "MB", "ms", "s", "/s", "count"]
 
     function format(value, unit, decimals) {
         if (value === undefined || value === null || isNaN(value))
@@ -24,6 +31,10 @@ QtObject {
             return duration(value * 1000)
         case "%":
             return value.toFixed(places === 0 ? 1 : places) + "%"
+        case "ratio":
+            return (value * 100).toFixed(places === 0 ? 1 : places) + "%"
+        case "MB":
+            return bytes(value * 1e6)
         case "/s":
             return compact(value, places) + "/s"
         default:

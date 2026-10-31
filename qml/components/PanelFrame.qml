@@ -17,7 +17,15 @@ Rectangle {
     // Something worth knowing about a chart that still drew. Unlike "error" this does not replace
     // the content - the line is there and readable, it just is not the line it appears to be.
     property string warning: ""
+    // What the panel is for, in the words of whoever built it. A metric name and a title say what
+    // is being drawn; this is the part a reader cannot work out from the chart - where the number
+    // comes from, what counts as normal, what to do when it is not. Empty on most panels, and the
+    // mark that opens it is absent when it is.
+    property string description: ""
     property bool editing: false
+    // Set by clicking the mark: the description then stays up with the pointer elsewhere, which is
+    // what reading more than a line needs.
+    property bool descriptionPinned: false
     // While a panel is being dragged or resized it is lifted out of the wall: a border, a shadow of
     // sorts, and it stops responding to hover so the pointer belongs to the gesture.
     property bool active: false
@@ -40,6 +48,13 @@ Rectangle {
         radius: 10
         color: Theme.panelHeader
 
+        // What is left for the title once the right-hand furniture has had its share: the three
+        // edit buttons when the wall is unlocked, and the description mark whenever there is one.
+        // Measured rather than assumed, so a title no longer runs under the ⓘ on a locked wall.
+        readonly property real textWidth: Math.max(0, width - 24
+                                                   - (panelActions.visible ? panelActions.width + 10 : 0)
+                                                   - (infoMark.visible ? infoMark.width + 10 : 0))
+
         // The radius belongs to the panel, not to the strip: without this the header's own bottom
         // corners are rounded in the middle of a flat panel.
         Rectangle {
@@ -61,7 +76,7 @@ Rectangle {
                 font.pixelSize: 12
                 font.bold: true
                 elide: Text.ElideRight
-                width: Math.max(0, header.width - 110)
+                width: header.textWidth
             }
             Text {
                 text: root.subtitle
@@ -69,18 +84,103 @@ Rectangle {
                 font.pixelSize: 10
                 visible: root.subtitle.length > 0 && header.height > 30
                 elide: Text.ElideRight
-                width: Math.max(0, header.width - 110)
+                width: header.textWidth
             }
         }
 
         BusyIndicator {
-            anchors.right: panelActions.left
-            anchors.rightMargin: 4
+            anchors.right: infoMark.visible ? infoMark.left : panelActions.left
+            anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
             width: 14
             height: 14
             running: root.loading
             visible: root.loading
+        }
+
+        // The upper-right corner, and visible whether or not the wall is unlocked - unlike the
+        // three buttons beside it, reading a panel is not editing it.
+        Text {
+            id: infoMark
+            anchors.right: panelActions.visible ? panelActions.left : parent.right
+            anchors.rightMargin: panelActions.visible ? 10 : 10
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.description.length > 0
+            text: "ⓘ"
+            font.pixelSize: 13
+            color: infoArea.containsMouse || root.descriptionPinned ? Theme.accent : Theme.textMuted
+
+            MouseArea {
+                id: infoArea
+                anchors.fill: parent
+                anchors.margins: -5
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                // Hovering shows it, clicking keeps it: a sentence is read on the way past, three
+                // are read with the pointer somewhere else.
+                onEntered: descriptionPopup.open()
+                onExited: if (!root.descriptionPinned) descriptionPopup.close()
+                onClicked: {
+                    root.descriptionPinned = !root.descriptionPinned
+                    if (root.descriptionPinned) descriptionPopup.open()
+                    else descriptionPopup.close()
+                }
+            }
+        }
+
+        // A popup rather than a ToolTip, because a tooltip does not wrap: Qt sizes one to its text
+        // and a description three sentences long becomes a line wider than the window. This one
+        // has a width, so it reads as a paragraph.
+        Popup {
+            id: descriptionPopup
+            parent: root
+            // A column wide enough to read, whatever the panel is: a small gauge is three columns
+            // of the grid, and a paragraph set to that width is a word a line. It hangs over the
+            // neighbours instead - it is an overlay, and it is gone as soon as the pointer leaves.
+            width: Math.min(320, root.Window.width > 0 ? root.Window.width - 24 : 320)
+
+            // Right-aligned under the mark, then pushed back inside the window: the panel this is
+            // parented to can be anywhere on the wall, and the ones at the edges are exactly the
+            // ones a popup wider than its panel would hang off the screen.
+            x: {
+                const preferred = infoMark.x + infoMark.width - width
+                const sceneX = root.mapToItem(null, 0, 0).x
+                const windowWidth = root.Window.width > 0 ? root.Window.width : sceneX + root.width
+                return Math.max(8 - sceneX, Math.min(preferred, windowWidth - sceneX - width - 8))
+            }
+            // Under the mark where there is room, above it where there is not: a panel low on
+            // the wall would otherwise open a paragraph that runs off the bottom of the window,
+            // and the end of a description is the part nobody can scroll to.
+            y: {
+                const below = header.height + 2
+                const sceneY = root.mapToItem(null, 0, 0).y
+                const windowHeight = root.Window.height > 0 ? root.Window.height : sceneY + root.height
+                if (sceneY + below + height <= windowHeight - 8) return below
+                const above = -height - 2
+                if (sceneY + above >= 8) return above
+                // Taller than the window has room for either way: sit as low as it can.
+                return Math.max(8 - sceneY, windowHeight - sceneY - height - 8)
+            }
+            padding: 10
+            // Hover and the pin drive this between them; an auto-close would fight the click that
+            // pins it. Escape still works, and unpins on the way out.
+            closePolicy: Popup.CloseOnEscape
+            onClosed: root.descriptionPinned = false
+
+            background: Rectangle {
+                radius: 8
+                color: Theme.panelHeader
+                border.color: Theme.border
+                border.width: 1
+            }
+
+            contentItem: Text {
+                text: root.description
+                color: Theme.text
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+                lineHeight: 1.2
+            }
         }
 
         Row {

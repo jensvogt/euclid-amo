@@ -16,6 +16,7 @@ is a query plus how to draw it:
 {
   "id": "p1758012345678",
   "title": "Pool utilisation",
+  "description": "Workers busy against the pool ceiling. Over 80% the autoscaler is already adding instances.",
   "type": "line",
   "metric": "module-utilisation",
   "labels": {},
@@ -25,6 +26,16 @@ is a query plus how to draw it:
   "x": 12, "y": 9, "w": 12, "h": 6
 }
 ```
+
+`description` is optional and carries what the chart cannot say for itself - where the number
+comes from, what counts as normal. A panel that has one shows an ⓘ in its header: hover it to read,
+click to keep it open. A panel without one carries no mark.
+
+`unit` decides how the number is written: `%` for a figure already on a 0-100 scale, `ratio` for one
+on a 0-1 scale - Micrometer's `process.cpu.usage` and every cache hit rate are fractions, and
+labelling those `%` understates them a hundredfold. A `ratio` gauge fills at 1 rather than at 100. `MB` is for a size already in megabytes - euclid's
+`application-memory-usage-real-mb` and its virtual twin - and scales on from there, so 2,048 of
+them read as `2.0 GB`.
 
 `labels` narrows to a dimension value; `groupBy` splits the rows into one line per value of a
 dimension. Both come from EMO's label map, so a metric an application pushed with
@@ -69,6 +80,15 @@ Unlock the wall (the padlock) to drag panels by their header and resize them fro
 corner. A move that would overlap another panel is refused rather than resolved by pushing the
 neighbours around — a wall where dropping one panel rearranges three others is a wall somebody has
 to repair afterwards. Every change is saved immediately.
+
+## A dashboard in its own window
+
+The ⧉ button on the toolbar opens the dashboard on screen in a window of its own, for the second
+monitor: the main window carries on as it was, and both refresh on the same tick. A detached wall
+is a copy taken when it was detached - it keeps its range, nothing in the main window reaches into
+it, and detaching the same dashboard again is how it picks up changes. Its panels are locked,
+because two windows writing one dashboard would be two windows disagreeing about it. Closing the
+main window closes them too.
 
 ## Time ranges
 

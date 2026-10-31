@@ -116,6 +116,7 @@ Item {
                 anchors.fill: parent
                 title: cell.modelData.title
                 subtitle: cell.modelData.metric + (cell.modelData.groupBy ? " · by " + cell.modelData.groupBy : "")
+                description: cell.modelData.description || ""
                 loading: cell.panelData.loading === true
                 error: cell.panelData.error || ""
                 warning: cell.panelData.warning || ""
@@ -213,7 +214,11 @@ Item {
                 GaugePanel {
                     value: cell.panelData.latest || 0
                     minimum: cell.modelData.minimum !== undefined ? cell.modelData.minimum : 0
-                    maximum: cell.modelData.maximum !== undefined ? cell.modelData.maximum : 100
+                    // A gauge needs a ceiling, and the unit says where it is: a ratio fills at 1
+                    // where a percentage fills at 100. Either way the panel's own maximum wins.
+                    maximum: cell.modelData.maximum !== undefined
+                             ? cell.modelData.maximum
+                             : (cell.modelData.unit === "ratio" ? 1 : 100)
                     unit: cell.modelData.unit || "%"
                     decimals: cell.modelData.decimals || 0
                 }

@@ -125,18 +125,26 @@ Item {
         return isNaN(date.getTime()) ? "—" : Qt.formatDateTime(date, "yyyy-MM-dd HH:mm")
     }
 
-    readonly property var currentRange: {
-        if (root.range === "custom" && root.customSpanSeconds > 0) {
-            return {label: "custom", seconds: root.customSpanSeconds,
-                    resolution: root.resolutionForSeconds(root.customSpanSeconds)}
+    readonly property var currentRange: root.rangeFor(root.range, root.customFrom, root.customTo)
+
+    // The same answer for a dashboard that is not the one on screen - a detached window's, which
+    // keeps the range it was detached with and has to be fetched on it.
+    function rangeFor(range, customFrom, customTo) {
+        if (range === "custom") {
+            const from = Date.parse(customFrom)
+            const to = Date.parse(customTo)
+            const seconds = (!isNaN(from) && !isNaN(to) && to > from) ? (to - from) / 1000 : 0
+            if (seconds > 0)
+                return {label: "custom", seconds: seconds, resolution: root.resolutionForSeconds(seconds)}
         }
         for (const entry of root.ranges) {
-            if (entry.label === root.range) return entry
+            if (entry.label === range) return entry
         }
         return root.ranges[1]
     }
 
     signal rangeSelected(string label)
+    signal detachRequested()
     signal customRangeRequested()
     signal refreshRequested()
     signal editingToggled()
@@ -375,6 +383,11 @@ Item {
             onActivated: root.editingToggled()
         }
         ToolButtonText { label: "＋"; tip: "Add a panel"; enabled: root.editing; onActivated: root.addPanelRequested() }
+        ToolButtonText {
+            label: "⧉"
+            tip: "Open this dashboard in a window of its own"
+            onActivated: root.detachRequested()
+        }
         ToolButtonText { label: "⚙"; tip: "Settings"; onActivated: root.settingsRequested() }
     }
 
