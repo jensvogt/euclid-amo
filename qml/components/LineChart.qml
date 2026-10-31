@@ -76,7 +76,11 @@ Item {
     // a byte count would undo that.
     function formatTick(v) {
         const step = root.ticks.length > 1 ? Math.abs(root.ticks[1] - root.ticks[0]) : 1
-        const digits = step >= 1 ? root.decimals : Math.min(3, Math.ceil(-Math.log(step) / Math.LN10))
+        // The step as the label will show it, not as it is stored: a "ratio" is printed a hundred
+        // times larger, so gridlines 0.01 apart are a whole per cent apart on screen and asking
+        // for two decimals of them prints "3.00%" where "3%" is the number.
+        const shown = root.unit === "ratio" ? step * 100 : step
+        const digits = shown >= 1 ? root.decimals : Math.min(3, Math.ceil(-Math.log(shown) / Math.LN10))
         return MetricFormat.format(v, root.unit, digits)
     }
 

@@ -49,6 +49,10 @@ ApplicationWindow {
     property string lastUpdated: "—"
     property int outstanding: 0
     property var catalog: []
+    // Dashboards opened in windows of their own, as copies taken when they were detached. They
+    // are fetched on the same tick as the one on screen - see refresh() - so a wall on a second
+    // monitor stays as current as this one.
+    property var detachedDashboards: []
 
     readonly property var panels: window.dashboard.panels || []
 
@@ -347,24 +351,66 @@ ApplicationWindow {
     }
 
     function fetchPanel(panel) {
+        window.fetchPanelFor(window.dashboard, panel)
+    }
+
+    // The same fetch for a dashboard that is not the one on screen. A detached window keeps the
+    // range it was detached with, so the window asked for and the tier it is read from come from
+    // that dashboard rather than from the bar.
+    function fetchPanelFor(dashboard, panel) {
         if (!window.loggedIn || !panel.metric) return
+
+        const range = topBar.rangeFor(dashboard.range || "1h",
+                                      dashboard.customFrom || "", dashboard.customTo || "")
+        const from = (dashboard.range === "custom" && dashboard.customFrom)
+                   ? dashboard.customFrom
+                   : new Date(Date.now() - range.seconds * 1000).toISOString()
+        const to = (dashboard.range === "custom" && dashboard.customTo) ? dashboard.customTo : ""
+
         window.outstanding++
-        // The window asked for, recorded alongside the answer: a panel that draws time with no
-        // data in it - see StatusStrip - cannot tell an empty stretch from the end of the data
-        // without knowing what was asked for.
-        const from = window.fromIso()
-        const to = window.toIso()
         window.setPanelState(panel.id, {loading: true, windowFrom: from,
                                         windowTo: to || new Date().toISOString()})
         emoClient.fetchSeries(panel.id, panel.metric, panel.labels || ({}), panel.groupBy || "",
-                              from, to, topBar.currentRange.resolution,
-                              panel.combine || "none", 1000)
+                              from, to, range.resolution, panel.combine || "none", 1000)
     }
+
 
     function refresh() {
         if (!window.loggedIn) return
         for (const panel of window.panels) window.fetchPanel(panel)
+
+        // The detached windows, on the same tick. A dashboard that is detached *and* on screen is
+        // skipped here: its panels carry the same ids, so the loop above has already asked for
+        // every one of them and asking again would double every request on the wall.
+        for (const detached of window.detachedDashboards) {
+            if ((detached.name || "") === (window.dashboard.name || "")) continue
+            for (const panel of (detached.panels || [])) window.fetchPanelFor(detached, panel)
+        }
         if (window.panels.length === 0) window.lastUpdated = Qt.formatDateTime(new Date(), "hh:mm:ss")
+    }
+
+    // ── Detached dashboards ──────────────────────────────────────────────────
+
+    // A copy rather than the dashboard itself: the detached window shows the wall as it stood
+    // when it was detached, and nothing in the main window reaches into it afterwards. Detaching
+    // the same one again is how it picks up changes.
+    function detachDashboard() {
+        const name = window.dashboard.name || ""
+        for (const detached of window.detachedDashboards) {
+            if ((detached.name || "") === name) {
+                window.showNotice("\"" + name + "\" is already open in a window of its own.")
+                return
+            }
+        }
+        window.detachedDashboards = window.detachedDashboards.concat(
+                    [JSON.parse(JSON.stringify(window.dashboard))])
+        window.showNotice("Detached \"" + name + "\" into its own window.")
+        window.refresh()
+    }
+
+    function attachDashboard(name) {
+        window.detachedDashboards = window.detachedDashboards.filter(
+                    detached => (detached.name || "") !== name)
     }
 
     function showNotice(text) {
@@ -372,6 +418,11 @@ ApplicationWindow {
         notice.visible = text.length > 0
         noticeTimer.restart()
     }
+
+    // Shutting the main window takes the detached walls with it. Without this the application
+    // keeps running behind an invisible main window - still signed in, still fetching on the
+    // timer - because Qt only quits when the last window has gone.
+    onClosing: window.detachedDashboards = []
 
     Component.onCompleted: {
         // The geometry above is where to open, not a rule to keep enforcing. Assigning each of the
@@ -552,6 +603,7 @@ ApplicationWindow {
 
         // Straight to the setting, which the timer and the Settings dialog both read.
         onRefreshSelected: (seconds) => appSettings.setAutoRefreshSeconds(seconds)
+        onDetachRequested: window.detachDashboard()
         onCustomRangeRequested: {
             timeRangeDialog.resolutionHint = topBar.currentRange.resolution
             // Seeded with whatever the wall is showing: for a relative range that is the window
@@ -751,6 +803,23 @@ ApplicationWindow {
     ServerSaveDialog {
         id: serverSaveDialog
         onSaveRequested: (name, dashboardNames) => window.saveConfigurationToServer(name, dashboardNames)
+    }
+
+    // One window per detached dashboard. An Instantiator rather than a Repeater, because what is
+    // being created is a Window and a Repeater only holds Items.
+    Instantiator {
+        model: window.detachedDashboards
+
+        delegate: DetachedDashboard {
+            required property var modelData
+
+            dashboard: modelData
+            dataById: window.panelData
+            lastUpdated: window.lastUpdated
+            busy: window.outstanding > 0
+
+            onCloseRequested: (name) => window.attachDashboard(name)
+        }
     }
 
     AboutDialog { id: aboutDialog }
