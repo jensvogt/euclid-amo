@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.16](https://github.com/jensvogt/euclid-amo/compare/1.0.15...v1.0.16) (2026-10-31)
+
+
+### Bug Fixes
+
+* descriptions for the charts, detached windows ([96a8dd0](https://github.com/jensvogt/euclid-amo/commit/96a8dd0d991f24d0f5adc5fe1f463ca2ab91c301))
+
 ## [1.0.15](https://github.com/jensvogt/euclid-amo/compare/1.0.14...v1.0.15) (2026-10-30)
 
 
