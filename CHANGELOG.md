@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.17](https://github.com/jensvogt/euclid-amo/compare/1.0.16...v1.0.17) (2026-11-07)
+
+
+### Bug Fixes
+
+* toolbar for detached windows ([83ca6a1](https://github.com/jensvogt/euclid-amo/commit/83ca6a1b7ab3c1fb0751d3dc741e5e680e12ed52))
+
 ## [1.0.16](https://github.com/jensvogt/euclid-amo/compare/1.0.15...v1.0.16) (2026-10-31)
 
 
