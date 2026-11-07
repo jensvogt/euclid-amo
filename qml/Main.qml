@@ -52,7 +52,32 @@ ApplicationWindow {
     // Dashboards opened in windows of their own, as copies taken when they were detached. They
     // are fetched on the same tick as the one on screen - see refresh() - so a wall on a second
     // monitor stays as current as this one.
-    property var detachedDashboards: []
+    // A ListModel rather than a JS array, and dynamicRoles so a row can hold the dashboard
+    // itself. Replacing an array makes the Instantiator below destroy and rebuild every window it
+    // holds - which, when the thing that changed was a range the user picked *in* one of those
+    // windows, tears down the window inside its own click handler. setProperty() changes a row in
+    // place, and remove() takes exactly one window down.
+    property alias detachedDashboards: detachedModel
+
+    ListModel {
+        id: detachedModel
+        dynamicRoles: true
+    }
+
+    function detachedIndexOf(name) {
+        for (let i = 0; i < detachedModel.count; ++i) {
+            if (detachedModel.get(i).name === name) return i
+        }
+        return -1
+    }
+    // Panel data for the detached windows, one map per dashboard name. Their own, because a
+    // detached window can be on a different range than the main one: the panels carry the same
+    // ids, so a single shared map would mean the two windows overwriting each other's answers and
+    // both showing whichever arrived last.
+    property var detachedData: ({})
+    // What separates a detached request from the main wall's in the id handed to EmoClient, which
+    // echoes it back untouched. "@" cannot occur in a generated panel id ("p" + a timestamp).
+    readonly property string detachedMark: "@"
 
     readonly property var panels: window.dashboard.panels || []
 
@@ -351,15 +376,35 @@ ApplicationWindow {
     }
 
     function fetchPanel(panel) {
-        window.fetchPanelFor(window.dashboard, panel)
+        window.fetchPanelFor(window.dashboard, panel, "")
+    }
+
+    // Every panel of one detached window, on that window's range.
+    function refreshDetached(name) {
+        const at = window.detachedIndexOf(name)
+        if (at < 0) return
+        const row = detachedModel.get(at)
+        // The range the window's own toolbar is set to, not the one the copy was taken with.
+        const dashboard = Object.assign({}, row.dashboard, {range: row.range})
+        for (const panel of (dashboard.panels || [])) window.fetchPanelFor(dashboard, panel, name)
+    }
+
+    function setDetachedState(name, panelId, state) {
+        const all = Object.assign({}, window.detachedData)
+        const one = Object.assign({}, all[name] || ({}))
+        one[panelId] = Object.assign({}, one[panelId] || ({}), state)
+        all[name] = one
+        window.detachedData = all
     }
 
     // The same fetch for a dashboard that is not the one on screen. A detached window keeps the
     // range it was detached with, so the window asked for and the tier it is read from come from
     // that dashboard rather than from the bar.
-    function fetchPanelFor(dashboard, panel) {
+    function fetchPanelFor(dashboard, panel, detachedName) {
         if (!window.loggedIn || !panel.metric) return
 
+        // A detached window's range is the one its toolbar is set to, not the one the copy was
+        // taken with; Main keeps it on the copy so the fetch and the window agree.
         const range = topBar.rangeFor(dashboard.range || "1h",
                                       dashboard.customFrom || "", dashboard.customTo || "")
         const from = (dashboard.range === "custom" && dashboard.customFrom)
@@ -367,11 +412,24 @@ ApplicationWindow {
                    : new Date(Date.now() - range.seconds * 1000).toISOString()
         const to = (dashboard.range === "custom" && dashboard.customTo) ? dashboard.customTo : ""
 
+        const state = {loading: true, windowFrom: from, windowTo: to || new Date().toISOString()}
         window.outstanding++
-        window.setPanelState(panel.id, {loading: true, windowFrom: from,
-                                        windowTo: to || new Date().toISOString()})
-        emoClient.fetchSeries(panel.id, panel.metric, panel.labels || ({}), panel.groupBy || "",
+        if (detachedName) window.setDetachedState(detachedName, panel.id, state)
+        else window.setPanelState(panel.id, state)
+
+        const requestId = detachedName ? panel.id + window.detachedMark + detachedName : panel.id
+        emoClient.fetchSeries(requestId, panel.metric, panel.labels || ({}), panel.groupBy || "",
                               from, to, range.resolution, panel.combine || "none", 1000)
+    }
+
+    // Splits what fetchPanelFor() put together, and applies the answer to whichever map asked.
+    function applyAnswer(requestId, state) {
+        const mark = requestId.indexOf(window.detachedMark)
+        if (mark < 0) {
+            window.setPanelState(requestId, state)
+            return
+        }
+        window.setDetachedState(requestId.substring(mark + 1), requestId.substring(0, mark), state)
     }
 
 
@@ -379,13 +437,9 @@ ApplicationWindow {
         if (!window.loggedIn) return
         for (const panel of window.panels) window.fetchPanel(panel)
 
-        // The detached windows, on the same tick. A dashboard that is detached *and* on screen is
-        // skipped here: its panels carry the same ids, so the loop above has already asked for
-        // every one of them and asking again would double every request on the wall.
-        for (const detached of window.detachedDashboards) {
-            if ((detached.name || "") === (window.dashboard.name || "")) continue
-            for (const panel of (detached.panels || [])) window.fetchPanelFor(detached, panel)
-        }
+        // Detached windows keep their own beat now - each has a refresh interval on its own
+        // toolbar - so the application's timer refreshes the wall on screen and nothing else. A
+        // detached window with its interval set to "off" is refreshed by its ⟳ button alone.
         if (window.panels.length === 0) window.lastUpdated = Qt.formatDateTime(new Date(), "hh:mm:ss")
     }
 
@@ -396,21 +450,36 @@ ApplicationWindow {
     // the same one again is how it picks up changes.
     function detachDashboard() {
         const name = window.dashboard.name || ""
-        for (const detached of window.detachedDashboards) {
-            if ((detached.name || "") === name) {
-                window.showNotice("\"" + name + "\" is already open in a window of its own.")
-                return
-            }
+        if (window.detachedIndexOf(name) >= 0) {
+            window.showNotice("\"" + name + "\" is already open in a window of its own.")
+            return
         }
-        window.detachedDashboards = window.detachedDashboards.concat(
-                    [JSON.parse(JSON.stringify(window.dashboard))])
+        detachedModel.append({name: name,
+                              dashboard: JSON.parse(JSON.stringify(window.dashboard)),
+                              range: window.dashboard.range || "1h"})
         window.showNotice("Detached \"" + name + "\" into its own window.")
-        window.refresh()
+        window.refreshDetached(name)
     }
 
     function attachDashboard(name) {
-        window.detachedDashboards = window.detachedDashboards.filter(
-                    detached => (detached.name || "") !== name)
+        const at = window.detachedIndexOf(name)
+        if (at >= 0) detachedModel.remove(at)
+        // Its data goes with it, so a window reopened on the same dashboard starts by fetching
+        // rather than by showing what it last had, which could be hours old.
+        const remaining = Object.assign({}, window.detachedData)
+        delete remaining[name]
+        window.detachedData = remaining
+    }
+
+    // The window's toolbar changed its range, or asked for a refresh. The copy carries the range
+    // so that fetchPanelFor() and the window cannot disagree about what is on screen.
+    function detachedRangeChanged(name, range) {
+        const at = window.detachedIndexOf(name)
+        if (at < 0) return
+        // In place: the window that asked for this is the delegate of this very row, and replacing
+        // the row would destroy it mid-click.
+        detachedModel.setProperty(at, "range", range)
+        window.refreshDetached(name)
     }
 
     function showNotice(text) {
@@ -478,7 +547,7 @@ ApplicationWindow {
         target: emoClient
 
         function onSeriesLoaded(panelId, series, latest, minimum, maximum, total) {
-            window.setPanelState(panelId, {
+            window.applyAnswer(panelId, {
                 series: series, latest: latest, minimum: minimum, maximum: maximum, total: total,
                 // Cleared here and set by onSeriesAmbiguous below, which arrives after this one:
                 // a split fixed in the editor should take the warning off the panel on the next
@@ -490,11 +559,11 @@ ApplicationWindow {
         }
 
         function onSeriesAmbiguous(panelId, message) {
-            window.setPanelState(panelId, {warning: message})
+            window.applyAnswer(panelId, {warning: message})
         }
 
         function onSeriesFailed(panelId, message) {
-            window.setPanelState(panelId, {loading: false, error: message})
+            window.applyAnswer(panelId, {loading: false, error: message})
             window.outstanding = Math.max(0, window.outstanding - 1)
         }
 
@@ -811,14 +880,20 @@ ApplicationWindow {
         model: window.detachedDashboards
 
         delegate: DetachedDashboard {
-            required property var modelData
+            required property var model
 
-            dashboard: modelData
-            dataById: window.panelData
+            dashboard: model.dashboard
+            dataById: window.detachedData[model.name] || ({})
             lastUpdated: window.lastUpdated
             busy: window.outstanding > 0
+            // Starts on the application's interval and is its own from then on.
+            refreshSeconds: appSettings.autoRefreshSeconds
 
             onCloseRequested: (name) => window.attachDashboard(name)
+            onRefreshRequested: (name) => window.detachedRangeChanged(name, range)
+            // The row is the truth about this window's range, so a window rebuilt for any other
+            // reason comes back on the range it was showing.
+            Component.onCompleted: range = model.range
         }
     }
 
