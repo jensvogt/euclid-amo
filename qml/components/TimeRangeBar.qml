@@ -25,14 +25,10 @@ Item {
     property string dashboardName: ""
     property var dashboardNames: []
 
-    readonly property var ranges: [
-        {label: "15m", seconds: 900, resolution: "RAW"},
-        {label: "1h", seconds: 3600, resolution: "RAW"},
-        {label: "6h", seconds: 21600, resolution: "RAW"},
-        {label: "24h", seconds: 86400, resolution: "HOUR"},
-        {label: "7d", seconds: 604800, resolution: "HOUR"},
-        {label: "30d", seconds: 2592000, resolution: "DAY"}
-    ]
+    // The table itself lives in the Ranges singleton now, because the detached windows carry the
+    // same six buttons. These stay as the bar's own surface so that Main and the dialogs that read
+    // "topBar.ranges" or call "topBar.rangeFor(...)" go on working.
+    readonly property var ranges: Ranges.table
 
     // The name DashboardStore::starterDashboard() gives the wall a first run creates, and the one
     // most installations keep as their front page - so it holds the top of the list rather than
@@ -59,89 +55,23 @@ Item {
         return (to - from) / 1000
     }
 
-    // Which tier a window of this length should be read from, taken from the table rather than
-    // written out again: the longest range that fits inside it answers for it.
-    //
-    // That way a custom window lands on the same tier as the button of the same length - a day
-    // typed in reads HOUR exactly as 24h does - and the ones in between inherit from the shorter
-    // neighbour rather than the longer. Nine hours asked of the HOUR tier is nine points; asked of
-    // RAW it is a hundred and eight, which is what somebody picking nine hours wanted to see.
-    function resolutionForSeconds(seconds) {
-        let resolution = root.ranges[0].resolution
-        for (const entry of root.ranges) {
-            if (entry.seconds <= seconds) resolution = entry.resolution
-        }
-        return resolution
-    }
-
-    // What one point of each tier actually is. This is the part of a range that is not on the
-    // button: 30d draws a point per day, so a spike that lasted an afternoon is not on that chart
-    // at all - it is inside one of its points, averaged away with the rest of the day.
-    readonly property var tierSeconds: ({"RAW": 300, "HOUR": 3600, "DAY": 86400})
-
-    function bucketWords(resolution) {
-        switch (resolution) {
-        case "RAW": return "5-minute averages"
-        case "HOUR": return "hourly averages"
-        case "DAY": return "daily averages"
-        }
-        return resolution
-    }
-
-    // "5-minute averages · 72 points", the second half being what the first means for this
-    // particular window - the figure that says whether a line will show detail or a trend.
-    function tierWords(seconds, resolution) {
-        const bucket = root.tierSeconds[resolution] || 0
-        if (!(bucket > 0) || !(seconds > 0)) return root.bucketWords(resolution)
-        return root.bucketWords(resolution) + "  ·  " + Math.max(1, Math.round(seconds / bucket)) + " points"
-    }
-
-    // The span in words rather than in the button's shorthand: a tooltip is read, not scanned.
-    function spanWords(seconds) {
-        if (seconds >= 86400 && seconds % 86400 === 0) {
-            const days = seconds / 86400
-            return days === 1 ? "The last 24 hours" : "The last " + days + " days"
-        }
-        if (seconds >= 3600 && seconds % 3600 === 0) {
-            const hours = seconds / 3600
-            return hours === 1 ? "The last hour" : "The last " + hours + " hours"
-        }
-        return "The last " + Math.max(1, Math.round(seconds / 60)) + " minutes"
-    }
-
-    function rangeTip(entry) {
-        return root.spanWords(entry.seconds) + "\n" + root.tierWords(entry.seconds, entry.resolution)
-    }
-
-    // Short enough for a button: "45m", "6h", "3d".
-    function formatSpan(seconds) {
-        if (seconds >= 86400) return Math.round(seconds / 86400) + "d"
-        if (seconds >= 3600) return Math.round(seconds / 3600) + "h"
-        return Math.max(1, Math.round(seconds / 60)) + "m"
-    }
+    // All of these moved into the Ranges singleton when the detached windows grew a toolbar of
+    // their own. They stay here as one-line forwards so that Main, the dialogs and the panels that
+    // already call them through the bar do not have to care where the table lives.
+    function resolutionForSeconds(seconds) { return Ranges.resolutionForSeconds(seconds) }
+    function bucketWords(resolution) { return Ranges.bucketWords(resolution) }
+    function tierWords(seconds, resolution) { return Ranges.tierWords(seconds, resolution) }
+    function spanWords(seconds) { return Ranges.spanWords(seconds) }
+    function rangeTip(entry) { return Ranges.rangeTip(entry) }
+    function formatSpan(seconds) { return Ranges.formatSpan(seconds) }
+    function rangeFor(range, customFrom, customTo) { return Ranges.entryFor(range, customFrom, customTo) }
 
     function formatInstant(iso) {
         const date = new Date(iso)
         return isNaN(date.getTime()) ? "—" : Qt.formatDateTime(date, "yyyy-MM-dd HH:mm")
     }
 
-    readonly property var currentRange: root.rangeFor(root.range, root.customFrom, root.customTo)
-
-    // The same answer for a dashboard that is not the one on screen - a detached window's, which
-    // keeps the range it was detached with and has to be fetched on it.
-    function rangeFor(range, customFrom, customTo) {
-        if (range === "custom") {
-            const from = Date.parse(customFrom)
-            const to = Date.parse(customTo)
-            const seconds = (!isNaN(from) && !isNaN(to) && to > from) ? (to - from) / 1000 : 0
-            if (seconds > 0)
-                return {label: "custom", seconds: seconds, resolution: root.resolutionForSeconds(seconds)}
-        }
-        for (const entry of root.ranges) {
-            if (entry.label === range) return entry
-        }
-        return root.ranges[1]
-    }
+    readonly property var currentRange: Ranges.entryFor(root.range, root.customFrom, root.customTo)
 
     signal rangeSelected(string label)
     signal detachRequested()
@@ -260,42 +190,10 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 0
 
-            Repeater {
-                model: root.ranges
-
-                delegate: Rectangle {
-                    id: rangeButton
-                    required property var modelData
-
-                    width: 42
-                    height: 28
-                    color: root.range === rangeButton.modelData.label ? Theme.accent
-                           : (rangeArea.containsMouse ? Theme.panelHeader : "transparent")
-                    border.color: Theme.border
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: rangeButton.modelData.label
-                        color: root.range === rangeButton.modelData.label ? "white" : Theme.textMuted
-                        font.pixelSize: 11
-                    }
-
-                    // What the button is short for, and what a point on the chart will be: "6h"
-                    // says nothing about whether the line is drawn from five-minute readings or
-                    // from daily ones, and that is the difference between seeing a spike and not.
-                    ToolTip.visible: rangeArea.containsMouse
-                    ToolTip.text: root.rangeTip(rangeButton.modelData)
-                    ToolTip.delay: 400
-
-                    MouseArea {
-                        id: rangeArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.rangeSelected(rangeButton.modelData.label)
-                    }
-                }
+            // The six relative ranges, shared with every detached window's toolbar.
+            RangeButtons {
+                range: root.range
+                onRangeSelected: (label) => root.rangeSelected(label)
             }
 
             // Part of the same segmented control rather than a button beside it: it answers the

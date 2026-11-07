@@ -84,9 +84,13 @@ to repair afterwards. Every change is saved immediately.
 ## A dashboard in its own window
 
 The ⧉ button on the toolbar opens the dashboard on screen in a window of its own, for the second
-monitor: the main window carries on as it was, and both refresh on the same tick. A detached wall
-is a copy taken when it was detached - it keeps its range, nothing in the main window reaches into
-it, and detaching the same dashboard again is how it picks up changes. Its panels are locked,
+monitor: the main window carries on as it was, and both refresh on the same tick. It carries its own toolbar: the six
+ranges and how often it re-asks, both its own. One monitor can sit on the last 15 minutes while
+another watches the week, and each window fetches its own data - the panels carry the same ids, so
+the request a detached window makes is tagged with its dashboard's name and the answer is kept in
+its own map rather than overwriting the wall on screen. A detached wall is a copy taken when it was
+detached, so nothing in the main window reaches into it, and detaching the same dashboard again is
+how it picks up changes. Its panels are locked,
 because two windows writing one dashboard would be two windows disagreeing about it. Closing the
 main window closes them too.
 
