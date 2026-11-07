@@ -1,24 +1,5 @@
 Package: euclid-amo
 Architecture: amd64
-Version: 1.0.12
-Priority: optional
-Section: utils
-Maintainer: Dr. Jens Vogt <jensvogt@users.noreply.github.com>
-Installed-Size: 67198
-Depends: libbrotli1 (>= 0.6.0), libc6 (>= 2.35), libegl1, libfontconfig1 (>= 2.12.6), libfreetype6 (>= 2.9.1), libgcc-s1 (>= 3.4), libglib2.0-0 (>= 2.45.6), libglx0, libice6 (>= 1:1.0.0), libopengl0, libsm6, libstdc++6 (>= 12), libx11-6, libx11-xcb1 (>= 2:1.7.5), libxcb-cursor0 (>= 0.0.99), libxcb-glx0, libxcb-icccm4 (>= 0.4.1), libxcb-image0 (>= 0.2.1), libxcb-keysyms1 (>= 0.4.0), libxcb-randr0 (>= 1.12), libxcb-render-util0, libxcb-render0, libxcb-shape0, libxcb-shm0 (>= 1.10), libxcb-sync1, libxcb-xfixes0, libxcb-xkb1, libxcb1 (>= 1.8), libxkbcommon-x11-0 (>= 0.5.0), libxkbcommon0 (>= 0.5.0), libzstd1 (>= 1.4.0), zlib1g (>= 1:1.2.3.4)
-Filename: pool/main/e/euclid-amo/euclid-amo-1.0.12-amd64.deb
-Size: 22633008
-MD5sum: 9f4a9170d0ed0cd0cced916d57eb23e2
-SHA1: b62cdaf52af931197725b0f32bdae78007ddaa1c
-SHA256: 841cc4b12a9985eb40fe71c3db342261cbb496e177ce66418260ff1e0be007f9
-SHA512: 616baad3b8447c18cf9e674ef7b52aaf7ce7f113860ac505e2f4190700d38302a1fa035e974d70e0c35a9173ffacc7fbeaaa3bdb3803fc7d64ea16a6061a384a
-Homepage: https://github.com/jensvogt/euclid-amo
-Description: Qt 6 dashboard wall over euclid's monitoring module (EMO)
-License: unknown
-Vendor: Euclid
-
-Package: euclid-amo
-Architecture: amd64
 Version: 1.0.13
 Priority: optional
 Section: utils
@@ -88,6 +69,25 @@ MD5sum: 0bb0f3150346cf195be5fd11bb3a1c78
 SHA1: 0b4b7ec2080390fab2ad70f8d5f3e2be289ddd6f
 SHA256: fb0032f5a29c717e407628e623c662d6a76a1fb86e374f4f3b45b1309880d208
 SHA512: 74e092c80699574b8ed1224e723936acab6d62648ba81f77162b0ddd7d86a0df927a55d981e503858d2a498b276b572c677518edd6c7fa450a26e025000de5a1
+Homepage: https://github.com/jensvogt/euclid-amo
+Description: Qt 6 dashboard wall over euclid's monitoring module (EMO)
+License: unknown
+Vendor: Euclid
+
+Package: euclid-amo
+Architecture: amd64
+Version: 1.0.17
+Priority: optional
+Section: utils
+Maintainer: Dr. Jens Vogt <jensvogt@users.noreply.github.com>
+Installed-Size: 68151
+Depends: libbrotli1 (>= 0.6.0), libc6 (>= 2.35), libegl1, libfontconfig1 (>= 2.12.6), libfreetype6 (>= 2.9.1), libgcc-s1 (>= 3.4), libglib2.0-0 (>= 2.45.6), libglx0, libice6 (>= 1:1.0.0), libopengl0, libsm6, libstdc++6 (>= 12), libx11-6, libx11-xcb1 (>= 2:1.7.5), libxcb-cursor0 (>= 0.0.99), libxcb-glx0, libxcb-icccm4 (>= 0.4.1), libxcb-image0 (>= 0.2.1), libxcb-keysyms1 (>= 0.4.0), libxcb-randr0 (>= 1.12), libxcb-render-util0, libxcb-render0, libxcb-shape0, libxcb-shm0 (>= 1.10), libxcb-sync1, libxcb-xfixes0, libxcb-xkb1, libxcb1 (>= 1.8), libxkbcommon-x11-0 (>= 0.5.0), libxkbcommon0 (>= 0.5.0), libzstd1 (>= 1.4.0), zlib1g (>= 1:1.2.3.4)
+Filename: pool/main/e/euclid-amo/euclid-amo-1.0.17-amd64.deb
+Size: 22818496
+MD5sum: 7c4887acd078383563642c39cf0a4bae
+SHA1: cf48a41ffbf1d41e4a42af492eb116be6d8a6018
+SHA256: 27d5fd507e63a8be4f4b7aa8d4e1f2969411cc0e7d5da88225948a5f376f0f03
+SHA512: 15342cceefd53820cab46e74625df43ac5889a73b1335f15946aa9f4771c6525b8b0cd13f0236c2e3ce79ef91cec3de158082a14c63b3e98e27eaf63bf42f4fd
 Homepage: https://github.com/jensvogt/euclid-amo
 Description: Qt 6 dashboard wall over euclid's monitoring module (EMO)
 License: unknown
